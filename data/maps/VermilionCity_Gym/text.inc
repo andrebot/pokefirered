@@ -138,3 +138,12 @@ VermilionCity_Gym_Text_OnlyTrashLocksWereReset::
     .string "Hey!\n"
     .string "The electric locks were reset!$"
 
+VermilionCity_Gym_Text_SurgeRematchIntro::
+    .string "CHAMPION! Of course!I figured.\n"
+    .string "I'm still not over the shock\n"
+    .string "of loosing to you. Have a go\n"
+    .string "with my real team.$"
+
+VermilionCity_Gym_Text_SurgeDefeatAgain::
+    .string "I think I have to get used\n"
+    .string "to this. Come again anytime.$"

@@ -56,7 +56,17 @@ CinnabarIsland_Gym_EventScript_Blaine::
 	famechecker FAMECHECKER_BLAINE, FCPICKSTATE_COLORED, UpdatePickStateFromSpecialVar8005
 	trainerbattle_single TRAINER_LEADER_BLAINE, CinnabarIsland_Gym_Text_BlaineIntro, CinnabarIsland_Gym_Text_BlaineDefeat, CinnabarIsland_Gym_EventScript_DefeatedBlaine, NO_MUSIC
 	goto_if_unset FLAG_GOT_TM38_FROM_BLAINE, CinnabarIsland_Gym_EventScript_GiveTM38
+	goto_if_set FLAG_DEFEATED_CHAMP, CeruleanCity_Gym_EventScript_ReMatch
 	msgbox CinnabarIsland_Gym_Text_BlainePostBattle
+	release
+	end
+
+CinnabarIsland_Gym_EventScript_ReMatch::
+	trainerbattle_single TRAINER_LEADER_BLAINE_2, CinnabarIsland_Gym_Text_BlaineRematchIntro, CinnabarIsland_Gym_Text_BlaineDefeatAgain, CinnabarIsland_Gym_EventScript_BlaineDefeatedAgain, NO_MUSIC
+	release
+	end
+
+CinnabarIsland_Gym_EventScript_BlaineDefeatedAgain::
 	release
 	end
 

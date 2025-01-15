@@ -90,3 +90,14 @@ CeruleanCity_Gym_Text_GymStatuePlayerWon::
     .string "WINNING TRAINERS:\n"
     .string "{RIVAL}, {PLAYER}$"
 
+CeruleanCity_Gym_Text_MistyRematchIntro::
+    .string "Aha, look if it isn't the\n"
+    .string "new CHAMPION!\p"
+    .string "{PLAYER}, I bet you had fun\n"
+    .string "battling the ELITE FOUR. Now,\n"
+    .string "let's see if you can handle\n"
+    .string "this!{PLAY_BGM}$"
+
+CeruleanCity_Gym_Text_MistyDefeatAgain::
+    .string "Wasn't it fun?\n"
+    .string "Come again anytime!$"

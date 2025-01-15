@@ -5,8 +5,18 @@ CeladonCity_Gym_EventScript_Erika::
 	famechecker FAMECHECKER_ERIKA, FCPICKSTATE_COLORED, UpdatePickStateFromSpecialVar8005
 	trainerbattle_single TRAINER_LEADER_ERIKA, CeladonCity_Gym_Text_ErikaIntro, CeladonCity_Gym_Text_ErikaDefeat, CeladonCity_Gym_EventScript_DefeatedErika, NO_MUSIC
 	goto_if_unset FLAG_GOT_TM19_FROM_ERIKA, CeladonCity_Gym_EventScript_GiveTM19
+	goto_if_set FLAG_DEFEATED_CHAMP, CeladonCity_Gym_EventScript_ReMatch
 	famechecker FAMECHECKER_ERIKA, 4
 	msgbox CeladonCity_Gym_Text_ErikaPostBattle
+	release
+	end
+
+CeladonCity_Gym_EventScript_ReMatch::
+	trainerbattle_single TRAINER_LEADER_ERIKA_2, CeruleanCity_Gym_Text_MistyRematchIntro, CeruleanCity_Gym_Text_MistyDefeatAgain, CeladonCity_Gym_EventScript_ErikaDefeatedAgain, NO_MUSIC
+	release
+	end
+
+CeladonCity_Gym_EventScript_ErikaDefeatedAgain::
 	release
 	end
 

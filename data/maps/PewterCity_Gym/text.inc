@@ -120,3 +120,13 @@ PewterCity_Gym_Text_GymStatuePlayerWon::
     .string "WINNING TRAINERS:\n"
     .string "{RIVAL}, {PLAYER}$"
 
+PewterCity_Gym_Text_BrockRematchIntro::
+    .string "I see you have defeated the\n"
+    .string "ELITE FOUR and become the\n"
+    .string "POKéMON CHAMPION, {PLAYER}.\p"
+    .string "I think now you are ready for.\n"
+    .string "a rematch with my real team.{PLAY_BGM}$"
+
+PewterCity_Gym_Text_BrockDefeatAgain::
+    .string "Aha! That was really impressive!\n"
+    .string "Come again anytime to train.$"

@@ -150,3 +150,13 @@ CeladonCity_Gym_Text_GymStatuePlayerWon::
     .string "WINNING TRAINERS:\n"
     .string "{RIVAL}, {PLAYER}$"
 
+CeladonCity_Gym_Text_ErikaRematchIntro::
+    .string "{PLAYER}, good to see you again.\n"
+    .string "And as a CHAMPION!\p"
+    .string "My flowers have grown stronger.\n"
+    .string "Let me show you!{PLAY_BGM}$"
+
+CeladonCity_Gym_Text_ErikaDefeatAgain::
+    .string "Oh well, back to arranging\n"
+    .string "flowers! Come again anytime!$"
+

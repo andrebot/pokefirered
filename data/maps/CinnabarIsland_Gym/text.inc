@@ -188,3 +188,15 @@ CinnabarIsland_Gym_Text_SorryBadCall::
     .string "Sorry!\n"
     .string "Bad call!$"
 
+CinnabarIsland_Gym_Text_BlaineRematchIntro::
+    .string "The new CHAMPION came in\n"
+    .string "with a fiery spirit!\p"
+    .string "{PLAYER}, I've heard you went\n"
+    .string "there with your guns blazing.\n"
+    .string "Let me show you what blazing\n"
+    .string "really means!{PLAY_BGM}$"
+
+CinnabarIsland_Gym_Text_BlaineDefeatAgain::
+    .string "That is the spirit!\n"
+    .string "Come again anytime!$"
+

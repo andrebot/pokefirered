@@ -158,3 +158,13 @@ SaffronCity_Gym_Text_GymStatuePlayerWon::
     .string "WINNING TRAINERS:\n"
     .string "{RIVAL}, {PLAYER}$"
 
+SaffronCity_Gym_Text_SabrinaRematchIntro::
+    .string "I had a vision of you becoming\n"
+    .string "the new CHAMPION!\p"
+    .string "Show me how your psychic powers\n"
+    .string "have grown!{PLAY_BGM}$"
+
+SaffronCity_Gym_Text_SabrinaDefeatAgain::
+    .string "A loss again, as predicted.\n"
+    .string "Come again anytime!$"
+

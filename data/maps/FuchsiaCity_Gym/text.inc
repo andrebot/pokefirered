@@ -154,3 +154,14 @@ FuchsiaCity_Gym_Text_GymStatuePlayerWon::
     .string "WINNING TRAINERS:\n"
     .string "{RIVAL}, {PLAYER}$"
 
+FuchsiaCity_Gym_Text_KogaRematchIntro::
+    .string "Fwahahaha, and a mere child\n"
+    .string "like you became the new\n"
+    .string "CHAMPION?\p"
+    .string "{PLAYER}, let me show you\n"
+    .string "what a real ninja can do!{PLAY_BGM}$"
+
+FuchsiaCity_Gym_Text_KogaDefeatAgain::
+    .string "I might have been wrong...\n"
+    .string "Come again anytime!$"
+
