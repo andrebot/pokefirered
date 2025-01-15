@@ -2,31 +2,49 @@ FuchsiaCity_House2_MapScripts::
 	.byte 0
 
 FuchsiaCity_House2_EventScript_FishingGurusBrother::
-	lock
+  lock
 	faceplayer
-	goto_if_set FLAG_GOT_GOOD_ROD, FuchsiaCity_House2_EventScript_AlreadyGotGoodRod
-	msgbox FuchsiaCity_House2_Text_DoYouLikeToFish, MSGBOX_YESNO
-	goto_if_eq VAR_RESULT, YES, FuchsiaCity_House2_EventScript_GiveGoodRod
-	msgbox FuchsiaCity_House2_Text_OhThatsDisappointing
+	goto_if_set FLAG_GOT_HELIX_FOSSIL, FuchsiaCity_House2_EventScript_AskAboutDomeFossil
+	goto_if_set FLAG_GOT_DOME_FOSSIL, FuchsiaCity_House2_EventScript_AskAboutHelixFossil
+	msgbox FuchsiaCity_House2_Text_HaveYouVisitedCinnabarLab
 	release
 	end
 
-FuchsiaCity_House2_EventScript_AlreadyGotGoodRod::
-	msgbox FuchsiaCity_House2_Text_HowAreTheFishBiting
+FuchsiaCity_House2_EventScript_AskAboutDomeFossil::
+	goto_if_set FLAG_GOT_DOME_FOSSIL, FuchsiaCity_House2_EventScript_AskAboutCinnabarLab
+	msgbox FuchsiaCity_House2_Text_YouWantTheFossil, MSGBOX_YESNO
+	goto_if_eq VAR_RESULT, YES, FuchsiaCity_House2_EventScript_GiveDomeFossil
+	msgbox FuchsiaCity_House2_Text_ISee
 	release
 	end
 
-FuchsiaCity_House2_EventScript_GiveGoodRod::
-	msgbox FuchsiaCity_House2_Text_LikeYourStyleTakeThis
-	checkitemspace ITEM_GOOD_ROD
-	goto_if_eq VAR_RESULT, FALSE, FuchsiaCity_House2_EventScript_NoRoomForGoodRod
-	giveitem_msg FuchsiaCity_House2_Text_ReceivedGoodRod, ITEM_GOOD_ROD
-	msgbox FuchsiaCity_House2_Text_GoodRodCanCatchBetterMons
-	setflag FLAG_GOT_GOOD_ROD
+FuchsiaCity_House2_EventScript_AskAboutHelixFossil::
+	goto_if_set FLAG_GOT_HELIX_FOSSIL, FuchsiaCity_House2_EventScript_AskAboutCinnabarLab
+	msgbox FuchsiaCity_House2_Text_YouWantTheFossil, MSGBOX_YESNO
+	goto_if_eq VAR_RESULT, YES, FuchsiaCity_House2_EventScript_GiveHelixFossil
+	msgbox FuchsiaCity_House2_Text_ISee
 	release
 	end
 
-FuchsiaCity_House2_EventScript_NoRoomForGoodRod::
-	msgbox FuchsiaCity_House2_Text_YouHaveNoRoomForGift
+FuchsiaCity_House2_EventScript_GiveDomeFossil::
+  giveitem_msg FuchsiaCity_House2_Text_ObtainedDomeFossil, ITEM_DOME_FOSSIL, 1, MUS_OBTAIN_KEY_ITEM
+	closemessage
+	playfanfare MUS_OBTAIN_KEY_ITEM
+	setflag FLAG_GOT_DOME_FOSSIL
+	waitfanfare
+	release
+	end
+
+FuchsiaCity_House2_EventScript_GiveHelixFossil::
+  giveitem_msg FuchsiaCity_House2_Text_ObtainedHelixFossil, ITEM_HELIX_FOSSIL, 1, MUS_OBTAIN_KEY_ITEM
+	closemessage
+	playfanfare MUS_OBTAIN_KEY_ITEM
+	setflag FLAG_GOT_HELIX_FOSSIL
+	waitfanfare
+	release
+	end
+
+FuchsiaCity_House2_EventScript_AskAboutCinnabarLab::
+  msgbox FuchsiaCity_House2_Text_HaveYouVisitedCinnabarLab
 	release
 	end
