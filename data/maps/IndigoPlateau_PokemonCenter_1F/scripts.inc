@@ -64,6 +64,33 @@ IndigoPlateau_PokemonCenter_1F_Items::
 	release
 	end
 
+IndigoPlateau_PokemonCenter_1F_EventScript_ClerkTMs::
+	goto_if_questlog EventScript_ReleaseEnd
+	lock
+	faceplayer
+	message Text_MayIHelpYou
+	waitmessage
+	pokemart IndigoPlateau_PokemonCenter_1F_ItemsTMs
+	msgbox Text_PleaseComeAgain
+	release
+	end
+
+	.align 2
+IndigoPlateau_PokemonCenter_1F_ItemsTMs::
+	.2byte ITEM_TM10
+	.2byte ITEM_TM14
+	.2byte ITEM_TM15
+	.2byte ITEM_TM24
+	.2byte ITEM_TM25
+	.2byte ITEM_TM26
+	.2byte ITEM_TM29
+	.2byte ITEM_TM38
+	.2byte ITEM_TM44
+	.2byte ITEM_TM50
+	.2byte ITEM_NONE
+	release
+	end
+
 IndigoPlateau_PokemonCenter_1F_EventScript_Nurse::
 	lock
 	faceplayer
