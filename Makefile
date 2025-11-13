@@ -68,6 +68,10 @@ endif
 
 SHELL := /bin/bash -o pipefail
 
+# Ensure MAKE points to the actual make binary, not Cursor
+# Use full path to avoid issues with Cursor setting MAKE environment variable
+MAKE := /usr/bin/make
+
 ROM := poke$(BUILD_NAME).gba
 OBJ_DIR := build/$(BUILD_NAME)
 
