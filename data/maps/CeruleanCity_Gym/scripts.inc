@@ -3,9 +3,9 @@ CeruleanCity_Gym_MapScripts::
 
 CeruleanCity_Gym_EventScript_Misty::
 	famechecker FAMECHECKER_MISTY, FCPICKSTATE_COLORED, UpdatePickStateFromSpecialVar8005
+	goto_if_set FLAG_DEFEATED_CHAMP, CeruleanCity_Gym_EventScript_ReMatch
 	trainerbattle_single TRAINER_LEADER_MISTY, CeruleanCity_Gym_Text_MistyIntro, CeruleanCity_Gym_Text_MistyDefeat, CeruleanCity_Gym_EventScript_MistyDefeated, NO_MUSIC
 	goto_if_unset FLAG_GOT_TM03_FROM_MISTY, CeruleanCity_Gym_EventScript_GiveTM03
-	goto_if_set FLAG_DEFEATED_CHAMP, CeruleanCity_Gym_EventScript_ReMatch
 	msgbox CeruleanCity_Gym_Text_ExplainTM03
 	release
 	end
@@ -16,6 +16,7 @@ CeruleanCity_Gym_EventScript_ReMatch::
 	end
 
 CeruleanCity_Gym_EventScript_MistyDefeatedAgain::
+	cleartrainerflag TRAINER_LEADER_MISTY_2
 	release
 	end
 
