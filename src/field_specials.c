@@ -2540,6 +2540,18 @@ void LoopWingFlapSound(void)
     PlaySE(SE_M_WING_ATTACK);
 }
 
+u16 GetBadgeCount(void)
+{
+    u32 flagId;
+    u8 count = 0;
+    for (flagId = FLAG_BADGE01_GET; flagId <= FLAG_BADGE08_GET; flagId++)
+    {
+        if (FlagGet(flagId))
+            count++;
+    }
+    return count;
+}
+
 static void Task_WingFlapSound(u8 taskId)
 {
     s16 *data = gTasks[taskId].data;

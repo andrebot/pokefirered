@@ -5697,7 +5697,7 @@ static const struct TrainerMonNoItemCustomMoves sParty_LeaderMisty[] = {
         .iv = 0,
         .lvl = 21,
         .species = SPECIES_STARMIE,
-        .moves = {MOVE_SWIFT, MOVE_RECOVER, MOVE_RAPID_SPIN, MOVE_WATER_PULSE},
+        .moves = {MOVE_CONFUSION, MOVE_RECOVER, MOVE_RAPID_SPIN, MOVE_WATER_PULSE},
     },
 };
 
@@ -5812,30 +5812,90 @@ static const struct TrainerMonItemCustomMoves sParty_LeaderLtSurge_2[] = {
     },
 };
 
-static const struct TrainerMonNoItemCustomMoves sParty_LeaderErika[] = {
+static const struct TrainerMonNoItemCustomMoves sParty_LeaderErika_3_badges[] = {
     {
         .iv = 0,
-        .lvl = 29,
-        .species = SPECIES_VICTREEBEL,
-        .moves = {MOVE_STUN_SPORE, MOVE_ACID, MOVE_POISON_POWDER, MOVE_GIGA_DRAIN},
-    },
-    {
-        .iv = 0,
-        .lvl = 24,
+        .lvl = 33,
         .species = SPECIES_TANGELA,
-        .moves = {MOVE_POISON_POWDER, MOVE_CONSTRICT, MOVE_INGRAIN, MOVE_GIGA_DRAIN},
+        .moves = {MOVE_STUN_SPORE, MOVE_CONSTRICT, MOVE_BIND, MOVE_GIGA_DRAIN},
     },
     {
         .iv = 0,
-        .lvl = 29,
+        .lvl = 34,
+        .species = SPECIES_VICTREEBEL,
+        .moves = {MOVE_STUN_SPORE, MOVE_ACID, MOVE_RAZOR_LEAF, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 31,
         .species = SPECIES_IVYSAUR,
         .moves = {MOVE_RAZOR_LEAF, MOVE_ACID, MOVE_LEECH_SEED, MOVE_GIGA_DRAIN},
     },
     {
         .iv = 0,
-        .lvl = 29,
+        .lvl = 35,
         .species = SPECIES_VILEPLUME,
-        .moves = {MOVE_SLEEP_POWDER, MOVE_ACID, MOVE_STUN_SPORE, MOVE_GIGA_DRAIN},
+        .moves = {MOVE_SOLAR_BEAM, MOVE_ACID, MOVE_STUN_SPORE, MOVE_GIGA_DRAIN},
+    },
+};
+
+static const struct TrainerMonNoItemCustomMoves sParty_LeaderErika_4_badges[] = {
+    {
+        .iv = 0,
+        .lvl = 41,
+        .species = SPECIES_TANGELA,
+        .moves = {MOVE_SLEEP_POWDER, MOVE_BODY_SLAM, MOVE_BIND, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 42,
+        .species = SPECIES_VICTREEBEL,
+        .moves = {MOVE_SWORDS_DANCE, MOVE_SLUDGE, MOVE_RAZOR_LEAF, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 42,
+        .species = SPECIES_IVYSAUR,
+        .moves = {MOVE_RAZOR_LEAF, MOVE_SLUDGE, MOVE_BODY_SLAM, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 43,
+        .species = SPECIES_VILEPLUME,
+        .moves = {MOVE_SLEEP_POWDER, MOVE_PETAL_DANCE, MOVE_SLUDGE, MOVE_GIGA_DRAIN},
+    },
+};
+
+static const struct TrainerMonNoItemCustomMoves sParty_LeaderErika_5_badges[] = {
+    {
+        .iv = 0,
+        .lvl = 48,
+        .species = SPECIES_TANGELA,
+        .moves = {MOVE_STUN_SPORE, MOVE_SOLAR_BEAM, MOVE_BIND, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 49,
+        .species = SPECIES_VICTREEBEL,
+        .moves = {MOVE_SWORDS_DANCE, MOVE_SLUDGE, MOVE_RAZOR_LEAF, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 48,
+        .species = SPECIES_IVYSAUR,
+        .moves = {MOVE_RAZOR_LEAF, MOVE_SOLAR_BEAM, MOVE_BODY_SLAM, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 48,
+        .species = SPECIES_EXEGGUTOR,
+        .moves = {MOVE_SLEEP_POWDER, MOVE_EGG_BOMB, MOVE_PSYCHIC, MOVE_GIGA_DRAIN},
+    },
+    {
+        .iv = 0,
+        .lvl = 50,
+        .species = SPECIES_VILEPLUME,
+        .moves = {MOVE_PETAL_DANCE, MOVE_SOLAR_BEAM, MOVE_SLUDGE, MOVE_GIGA_DRAIN},
     },
 };
 
