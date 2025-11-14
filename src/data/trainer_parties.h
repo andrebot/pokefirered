@@ -6136,27 +6136,60 @@ static const struct TrainerMonItemCustomMoves sParty_LeaderBlaine_2[] = {
 static const struct TrainerMonNoItemCustomMoves sParty_LeaderSabrina[] = {
     {
         .iv = 0,
-        .lvl = 38,
-        .species = SPECIES_KADABRA,
-        .moves = {MOVE_PSYBEAM, MOVE_REFLECT, MOVE_FUTURE_SIGHT, MOVE_CALM_MIND},
+        .lvl = 43,
+        .species = SPECIES_ABRA,
+        .moves = {MOVE_PSYCHIC, MOVE_NONE, MOVE_NONE, MOVE_NONE},
     },
     {
         .iv = 0,
-        .lvl = 37,
+        .lvl = 42,
         .species = SPECIES_MR_MIME,
-        .moves = {MOVE_BARRIER, MOVE_PSYBEAM, MOVE_BATON_PASS, MOVE_CALM_MIND},
+        .moves = {MOVE_LIGHT_SCREEN, MOVE_MIMIC, MOVE_PSYCHIC, MOVE_CALM_MIND},
     },
     {
         .iv = 0,
-        .lvl = 38,
-        .species = SPECIES_VENOMOTH,
-        .moves = {MOVE_PSYBEAM, MOVE_GUST, MOVE_LEECH_LIFE, MOVE_SUPERSONIC},
+        .lvl = 43,
+        .species = SPECIES_KADABRA,
+        .moves = {MOVE_PSYWAVE, MOVE_RECOVER, MOVE_PSYCHIC, MOVE_CALM_MIND},
     },
     {
         .iv = 0,
         .lvl = 43,
         .species = SPECIES_ALAKAZAM,
-        .moves = {MOVE_PSYCHIC, MOVE_RECOVER, MOVE_FUTURE_SIGHT, MOVE_CALM_MIND},
+        .moves = {MOVE_THUNDER_WAVE, MOVE_RECOVER, MOVE_PSYCHIC, MOVE_CALM_MIND},
+    },
+};
+
+static const struct TrainerMonNoItemCustomMoves sParty_LeaderSabrina_5_badges[] = {
+    {
+        .iv = 0,
+        .lvl = 50,
+        .species = SPECIES_ABRA,
+        .moves = {MOVE_PSYCHIC, MOVE_NONE, MOVE_NONE, MOVE_NONE},
+    },
+    {
+        .iv = 0,
+        .lvl = 48,
+        .species = SPECIES_HYPNO,
+        .moves = {MOVE_PSYCHIC, MOVE_HYPNOSIS, MOVE_DREAM_EATER, MOVE_CALM_MIND},
+    },
+    {
+        .iv = 0,
+        .lvl = 49,
+        .species = SPECIES_MR_MIME,
+        .moves = {MOVE_LIGHT_SCREEN, MOVE_MIMIC, MOVE_PSYCHIC, MOVE_CALM_MIND},
+    },
+    {
+        .iv = 0,
+        .lvl = 50,
+        .species = SPECIES_KADABRA,
+        .moves = {MOVE_PSYWAVE, MOVE_RECOVER, MOVE_PSYCHIC, MOVE_CALM_MIND},
+    },
+    {
+        .iv = 0,
+        .lvl = 50,
+        .species = SPECIES_ALAKAZAM,
+        .moves = {MOVE_THUNDER_WAVE, MOVE_RECOVER, MOVE_PSYCHIC, MOVE_CALM_MIND},
     },
 };
 

@@ -754,14 +754,15 @@
 #define TRAINER_LEADER_ERIKA_2                   748
 #define TRAINER_LEADER_KOGA_2                    749
 #define TRAINER_LEADER_KOGA_5_B                  750
-#define TRAINER_LEADER_BLAINE_2                  751
-#define TRAINER_LEADER_SABRINA_2                 752
+#define TRAINER_LEADER_SABRINA_5_B               751
+#define TRAINER_LEADER_BLAINE_2                  752
+#define TRAINER_LEADER_SABRINA_2                 753
 
 // NOTE: Because each Trainer uses a flag to determine when they are defeated, there is 
 //       only space for 25 additional trainers before trainer flag space overflows.
 //       MAX_TRAINERS_COUNT can be increased but will take up additional saveblock space
 
-#define NUM_TRAINERS                             753
+#define NUM_TRAINERS                             754
 #define MAX_TRAINERS_COUNT                       768
 
 #endif  // GUARD_CONSTANTS_OPPONENTS_H
