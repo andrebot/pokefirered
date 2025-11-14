@@ -4,7 +4,21 @@ FuchsiaCity_Gym_MapScripts::
 FuchsiaCity_Gym_EventScript_Koga::
 	famechecker FAMECHECKER_KOGA, FCPICKSTATE_COLORED, UpdatePickStateFromSpecialVar8005
 	goto_if_set FLAG_DEFEATED_CHAMP, FuchsiaCity_Gym_EventScript_ReMatch
+	specialvar VAR_RESULT, GetBadgeCount
+	compare VAR_RESULT, 5
+	goto_if_ge FuchsiaCity_Gym_EventScript_Koga_5Badges
+	goto FuchsiaCity_Gym_EventScript_Koga_4_or_less_Badges
+	end
+
+FuchsiaCity_Gym_EventScript_Koga_4_or_less_Badges::
 	trainerbattle_single TRAINER_LEADER_KOGA, FuchsiaCity_Gym_Text_KogaIntro, FuchsiaCity_Gym_Text_KogaDefeat, FuchsiaCity_Gym_EventScript_DefeatedKoga, NO_MUSIC
+	goto_if_unset FLAG_GOT_TM06_FROM_KOGA, FuchsiaCity_Gym_EventScript_GiveTM06
+	msgbox FuchsiaCity_Gym_Text_KogaPostBattle
+	release
+	end
+
+FuchsiaCity_Gym_EventScript_Koga_5Badges::
+	trainerbattle_single TRAINER_LEADER_KOGA_5_B, FuchsiaCity_Gym_Text_KogaIntro, FuchsiaCity_Gym_Text_KogaDefeat, FuchsiaCity_Gym_EventScript_DefeatedKoga, NO_MUSIC
 	goto_if_unset FLAG_GOT_TM06_FROM_KOGA, FuchsiaCity_Gym_EventScript_GiveTM06
 	msgbox FuchsiaCity_Gym_Text_KogaPostBattle
 	release

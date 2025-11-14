@@ -5947,27 +5947,66 @@ static const struct TrainerMonItemCustomMoves sParty_LeaderErika_2[] = {
 static const struct TrainerMonNoItemCustomMoves sParty_LeaderKoga[] = {
     {
         .iv = 0,
-        .lvl = 37,
-        .species = SPECIES_KOFFING,
-        .moves = {MOVE_SELF_DESTRUCT, MOVE_SLUDGE, MOVE_SMOKESCREEN, MOVE_TOXIC},
+        .lvl = 42,
+        .species = SPECIES_GOLBAT,
+        .moves = {MOVE_CONFUSE_RAY, MOVE_BITE, MOVE_SMOKESCREEN, MOVE_TOXIC},
     },
     {
         .iv = 0,
-        .lvl = 39,
+        .lvl = 42,
         .species = SPECIES_MUK,
         .moves = {MOVE_MINIMIZE, MOVE_SLUDGE, MOVE_ACID_ARMOR, MOVE_TOXIC},
     },
     {
         .iv = 0,
-        .lvl = 37,
-        .species = SPECIES_KOFFING,
-        .moves = {MOVE_SELF_DESTRUCT, MOVE_SLUDGE, MOVE_SMOKESCREEN, MOVE_TOXIC},
+        .lvl = 41,
+        .species = SPECIES_TENTACRUEL,
+        .moves = {MOVE_SURF, MOVE_ICE_BEAM, MOVE_BARRIER, MOVE_SLUDGE},
+    },
+    {
+        .iv = 0,
+        .lvl = 41,
+        .species = SPECIES_WEEZING,
+        .moves = {MOVE_SELF_DESTRUCT, MOVE_AMNESIA, MOVE_THUNDERBOLT, MOVE_SLUDGE},
     },
     {
         .iv = 0,
         .lvl = 43,
+        .species = SPECIES_VENOMOTH,
+        .moves = {MOVE_SOLAR_BEAM, MOVE_DOUBLE_TEAM, MOVE_SLUDGE, MOVE_TOXIC},
+    },
+};
+
+static const struct TrainerMonNoItemCustomMoves sParty_LeaderKoga_5_badges[] = {
+    {
+        .iv = 0,
+        .lvl = 49,
+        .species = SPECIES_GOLBAT,
+        .moves = {MOVE_CONFUSE_RAY, MOVE_SLUDGE, MOVE_SMOKESCREEN, MOVE_TOXIC},
+    },
+    {
+        .iv = 0,
+        .lvl = 48,
+        .species = SPECIES_MUK,
+        .moves = {MOVE_MINIMIZE, MOVE_SLUDGE, MOVE_ACID_ARMOR, MOVE_TOXIC},
+    },
+    {
+        .iv = 0,
+        .lvl = 49,
+        .species = SPECIES_TENTACRUEL,
+        .moves = {MOVE_BARRIER, MOVE_SURF, MOVE_ICE_BEAM, MOVE_SLUDGE},
+    },
+    {
+        .iv = 0,
+        .lvl = 48,
         .species = SPECIES_WEEZING,
-        .moves = {MOVE_TACKLE, MOVE_SLUDGE, MOVE_SMOKESCREEN, MOVE_TOXIC},
+        .moves = {MOVE_AMNESIA, MOVE_SLUDGE, MOVE_THUNDERBOLT, MOVE_EXPLOSION},
+    },
+    {
+        .iv = 0,
+        .lvl = 50,
+        .species = SPECIES_VENOMOTH,
+        .moves = {MOVE_SOLAR_BEAM, MOVE_DOUBLE_TEAM, MOVE_SLUDGE, MOVE_TOXIC},
     },
 };
 
