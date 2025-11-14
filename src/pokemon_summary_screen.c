@@ -89,7 +89,6 @@ static void PokeSum_Setup_SetVBlankCallback(void);
 static void PokeSum_FinishSetup(void);
 static void BufferMonInfo(void);
 static void BufferMonSkills(void);
-static void BufferMonIVs(void);
 static void BufferMonMoves(void);
 static u8 StatusToAilment(u32 status);
 static void BufferMonMoveI(u8);
@@ -109,7 +108,6 @@ static void Task_InputHandler_SelectOrForgetMove(u8 taskId);
 static void CB2_RunPokemonSummaryScreen(void);
 static void PrintInfoPage(void);
 static void PrintSkillsPage(void);
-static void PrintIVsPage(void);
 static void PrintMovesPage(void);
 static void PokeSum_PrintMoveName(u8 i);
 static void PokeSum_PrintTrainerMemo(void);
@@ -176,7 +174,6 @@ struct PokemonSummaryScreenData
         u8 ALIGNED(4) levelStrBuf[7];
         u8 ALIGNED(4) curHpStrBuf[9];
         u8 ALIGNED(4) statValueStrBufs[5][5];
-        u8 ALIGNED(4) ivValueStrBufs[6][5];
 
         u8 ALIGNED(4) moveCurPpStrBufs[5][11];
         u8 ALIGNED(4) moveMaxPpStrBufs[5][11];
@@ -261,13 +258,6 @@ struct Struct203B144
 
     u16 curPp[5];
     u16 maxPp[5];
-
-    u16 hpIVStr;
-    u16 atkIVStr;
-    u16 defIVStr;
-    u16 spAIVStr;
-    u16 spDIVStr;
-    u16 speIVStr;
 
     u16 unk26;
 };
@@ -1610,7 +1600,7 @@ static void PokeSum_InitBgCoordsBeforePageFlips(void)
         PokeSum_UpdateBgPriorityForPageFlip(1, 0);
     }
 
-    if (sMonSummaryScreen->curPageIndex == PSS_PAGE_SKILLS || sMonSummaryScreen->curPageIndex == PSS_PAGE_IVS)
+    if (sMonSummaryScreen->curPageIndex == PSS_PAGE_SKILLS)
     {
         if (sMonSummaryScreen->pageFlipDirection == 1)
             PokeSum_SetHpExpBarCoordsFullLeft();
@@ -1636,7 +1626,6 @@ static void PokeSum_HideSpritesBeforePageFlip(void)
     case PSS_PAGE_INFO:
         break;
     case PSS_PAGE_SKILLS:
-    case PSS_PAGE_IVS:
         ShowOrHideHpBarObjs(TRUE);
         ShowOrHideExpBarObjs(TRUE);
         break;
@@ -1678,7 +1667,6 @@ static void PokeSum_ShowSpritesBeforePageFlip(void)
         ShowOrHideExpBarObjs(FALSE);
         break;
     case PSS_PAGE_SKILLS:
-    case PSS_PAGE_IVS:
         break;
     case PSS_PAGE_MOVES:
         if (sMonSummaryScreen->pageFlipDirection == 0)
@@ -1839,23 +1827,31 @@ static void PokeSum_UpdateBgPriorityForPageFlip(u8 setBg0Priority, u8 keepBg1Bg2
 
 static void PokeSum_CopyNewBgTilemapBeforePageFlip_2(void)
 {
-    // curPageIndex has already been updated to the new page we're transitioning to
-    switch (sMonSummaryScreen->curPageIndex)
+    u8 newPage;
+
+    if (sMonSummaryScreen->pageFlipDirection == 1)
+        newPage = sMonSummaryScreen->curPageIndex - 1;
+    else
+        newPage = sMonSummaryScreen->curPageIndex + 1;
+
+    switch (newPage)
     {
     case PSS_PAGE_INFO:
-        CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageInfo_Tilemap, 0, 0);
-        break;
-    case PSS_PAGE_SKILLS:
-        // SKILLS page always uses PageSkills tilemap
         CopyToBgTilemapBuffer(sMonSummaryScreen->infoAndMovesPageBgNum, gSummaryScreen_PageSkills_Tilemap, 0, 0);
         break;
-    case PSS_PAGE_IVS:
-        // IVS page uses same background as SKILLS page
-        CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageSkills_Tilemap, 0, 0);
+    case PSS_PAGE_SKILLS:
+        if (sMonSummaryScreen->pageFlipDirection == 1)
+            CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageMoves_Tilemap, 0, 0);
+        else
+            CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageInfo_Tilemap, 0, 0);
+
         break;
     case PSS_PAGE_MOVES:
-        // MOVES page should always use MOVES tilemap
-        CopyToBgTilemapBuffer(sMonSummaryScreen->infoAndMovesPageBgNum, gSummaryScreen_PageMoves_Tilemap, 0, 0);
+        if (sMonSummaryScreen->pageFlipDirection == 1)
+            CopyToBgTilemapBuffer(sMonSummaryScreen->infoAndMovesPageBgNum, gSummaryScreen_PageMovesInfo_Tilemap, 0, 0);
+        else
+            CopyToBgTilemapBuffer(sMonSummaryScreen->infoAndMovesPageBgNum, gSummaryScreen_PageSkills_Tilemap, 0, 0);
+
         break;
     case PSS_PAGE_MOVES_INFO:
         CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageMoves_Tilemap, 0, 0);
@@ -1865,23 +1861,26 @@ static void PokeSum_CopyNewBgTilemapBeforePageFlip_2(void)
 
 static void PokeSum_CopyNewBgTilemapBeforePageFlip(void)
 {
-    // curPageIndex has already been updated to the new page we're transitioning to
-    switch (sMonSummaryScreen->curPageIndex)
+    u8 newPage;
+
+    if (sMonSummaryScreen->pageFlipDirection == 1)
+        newPage = sMonSummaryScreen->curPageIndex - 1;
+    else
+        newPage = sMonSummaryScreen->curPageIndex + 1;
+
+    switch (newPage)
     {
     case PSS_PAGE_INFO:
-        CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageInfo_Tilemap, 0, 0);
-        break;
-    case PSS_PAGE_SKILLS:
-        // SKILLS page always uses PageSkills tilemap
         CopyToBgTilemapBuffer(sMonSummaryScreen->infoAndMovesPageBgNum, gSummaryScreen_PageSkills_Tilemap, 0, 0);
         break;
-    case PSS_PAGE_IVS:
-        // IVS page uses same background as SKILLS page
-        CopyToBgTilemapBuffer(sMonSummaryScreen->skillsPageBgNum, gSummaryScreen_PageSkills_Tilemap, 0, 0);
+    case PSS_PAGE_SKILLS:
         break;
     case PSS_PAGE_MOVES:
-        // MOVES page should always use MOVES tilemap
-        CopyToBgTilemapBuffer(3, sBgTilemap_MovesPage, 0, 0);
+        if (sMonSummaryScreen->pageFlipDirection == 1)
+            CopyToBgTilemapBuffer(3, sBgTilemap_MovesPage, 0, 0);
+        else
+            CopyToBgTilemapBuffer(3, sBgTilemap_MovesInfoPage, 0, 0);
+
         break;
     case PSS_PAGE_MOVES_INFO:
         CopyToBgTilemapBuffer(3, sBgTilemap_MovesInfoPage, 0, 0);
@@ -2067,10 +2066,6 @@ static u8 PokeSum_Setup_BufferStrings(void)
         break;
     case 2:
         if (sMonSummaryScreen->isEgg == 0)
-            BufferMonIVs();
-        break;
-    case 3:
-        if (sMonSummaryScreen->isEgg == 0)
             BufferMonMoves();
         break;
     default:
@@ -2242,41 +2237,6 @@ static void BufferMonSkills(void)
     if (sMonSummaryScreen->curMonStatusAilment == AILMENT_NONE)
         if (CheckPartyPokerus(&sMonSummaryScreen->currentMon, 0))
             sMonSummaryScreen->curMonStatusAilment = AILMENT_PKRS;
-}
-
-static void BufferMonIVs(void)
-{
-    u8 ivValue;
-
-    // HP IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_HP_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[0], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->hpIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[0]);
-
-    // Attack IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_ATK_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[1], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->atkIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[1]);
-
-    // Defense IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_DEF_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[2], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->defIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[2]);
-
-    // Sp. Attack IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SPATK_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[3], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->spAIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[3]);
-
-    // Sp. Defense IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SPDEF_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[4], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->spDIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[4]);
-
-    // Speed IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SPEED_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[5], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->speIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[5]);
 }
 
 static void BufferMonMoves(void)
@@ -2493,9 +2453,6 @@ static void PokeSum_PrintRightPaneText(void)
     case PSS_PAGE_SKILLS:
         PrintSkillsPage();
         break;
-    case PSS_PAGE_IVS:
-        PrintIVsPage();
-        break;
     case PSS_PAGE_MOVES:
     case PSS_PAGE_MOVES_INFO:
         PrintMovesPage();
@@ -2549,17 +2506,6 @@ static void PrintSkillsPage(void)
     AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->speStr, 74, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPE]);
     AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 15 + sMonSkillsPrinterXpos->expStr, 87, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expPointsStrBuf);
     AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 15 + sMonSkillsPrinterXpos->toNextLevel, 100, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expToNextLevelStrBuf);
-}
-
-static void PrintIVsPage(void)
-{
-    // Print only IV values, no labels (same positions as skills page stat values)
-    AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->hpIVStr, 4, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[0]);
-    AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->atkIVStr, 22, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[1]);
-    AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->defIVStr, 35, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[2]);
-    AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spAIVStr, 48, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[3]);
-    AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spDIVStr, 61, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[4]);
-    AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->speIVStr, 74, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[5]);
 }
 
 #define GetMoveNamePrinterYpos(x) ((x) * 28 + 5)
@@ -2998,11 +2944,6 @@ static void PokeSum_PrintPageHeaderText(u8 curPageIndex)
         PokeSum_PrintControlsString(gText_PokeSum_Controls_Page);
         PrintMonLevelNickOnWindow2(gText_PokeSum_NoData);
         break;
-    case PSS_PAGE_IVS:
-        PokeSum_PrintPageName(gText_PokeSum_PageName_IVs);
-        PokeSum_PrintControlsString(gText_PokeSum_Controls_Page);
-        PrintMonLevelNickOnWindow2(gText_PokeSum_NoData);
-        break;
     case PSS_PAGE_MOVES:
         PokeSum_PrintPageName(gText_PokeSum_PageName_KnownMoves);
         PokeSum_PrintControlsString(gText_PokeSum_Controls_PageDetail);
@@ -3263,7 +3204,6 @@ static void PokeSum_AddWindows(u8 curPageIndex)
             sMonSummaryScreen->windowIds[i + 3] = AddWindow(&sWindowTemplates_Info[i]);
             break;
         case PSS_PAGE_SKILLS:
-        case PSS_PAGE_IVS:
         default:
             sMonSummaryScreen->windowIds[i + 3] = AddWindow(&sWindowTemplates_Skills[i]);
             break;
@@ -3376,21 +3316,6 @@ static void PokeSum_DrawPageProgressTiles(void)
         FillBgTilemapBufferRect(3, 21 + PAGE_PROGRESS_BASE_TILE_NUM, 18, 0, 1, 1, 0);
         FillBgTilemapBufferRect(3, 37 + PAGE_PROGRESS_BASE_TILE_NUM, 18, 1, 1, 1, 0);
         break;
-    case PSS_PAGE_IVS:
-        // Same as SKILLS page - dot 2 filled (between INFO and MOVES)
-        FillBgTilemapBufferRect(3, 49 + PAGE_PROGRESS_BASE_TILE_NUM, 13, 0, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 65 + PAGE_PROGRESS_BASE_TILE_NUM, 13, 1, 1, 1, 0);
-        FillBgTilemapBufferRect(3,  1 + PAGE_PROGRESS_BASE_TILE_NUM, 14, 0, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 19 + PAGE_PROGRESS_BASE_TILE_NUM, 14, 1, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 17 + PAGE_PROGRESS_BASE_TILE_NUM, 15, 0, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 33 + PAGE_PROGRESS_BASE_TILE_NUM, 15, 1, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 16 + PAGE_PROGRESS_BASE_TILE_NUM, 16, 0, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 32 + PAGE_PROGRESS_BASE_TILE_NUM, 16, 1, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 18 + PAGE_PROGRESS_BASE_TILE_NUM, 17, 0, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 34 + PAGE_PROGRESS_BASE_TILE_NUM, 17, 1, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 21 + PAGE_PROGRESS_BASE_TILE_NUM, 18, 0, 1, 1, 0);
-        FillBgTilemapBufferRect(3, 37 + PAGE_PROGRESS_BASE_TILE_NUM, 18, 1, 1, 1, 0);
-        break;
     case PSS_PAGE_MOVES:
         FillBgTilemapBufferRect(3, 49 + PAGE_PROGRESS_BASE_TILE_NUM, 13, 0, 1, 1, 0);
         FillBgTilemapBufferRect(3, 65 + PAGE_PROGRESS_BASE_TILE_NUM, 13, 1, 1, 1, 0);
@@ -3444,8 +3369,6 @@ static void PokeSum_PrintMonTypeIcons(void)
         }
         break;
     case PSS_PAGE_SKILLS:
-        break;
-    case PSS_PAGE_IVS:
         break;
     case PSS_PAGE_MOVES:
         break;
