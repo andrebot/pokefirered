@@ -838,6 +838,7 @@ const u8 gText_PokeSum_Controls_PageCancel[] = _("{DPAD_RIGHT}PAGE {A_BUTTON}CAN
 const u8 gText_PokeSum_Controls_Cancel[] = _("{A_BUTTON}CANCEL");
 const u8 gText_PokeSum_Controls_Page[] = _("{DPAD_LEFTRIGHT}PAGE");
 const u8 gText_PokeSum_Controls_PageDetail[] = _("{DPAD_LEFT}PAGE {A_BUTTON}DETAIL");
+const u8 gText_PokeSum_Controls_PageIVs[] = _("{DPAD_LEFT}PAGE {A_BUTTON}IVs");
 const u8 gText_PokeSum_Controls_PickSwitch[] = _("{DPAD_UPDOWN}PICK {A_BUTTON}SWITCH");
 const u8 gText_PokeSum_Controls_Pick[] = _("{DPAD_UPDOWN}PICK");
 const u8 gText_PokeSum_Controls_PickDelete[] = _("{DPAD_UPDOWN}PICK {A_BUTTON}DELETE");
