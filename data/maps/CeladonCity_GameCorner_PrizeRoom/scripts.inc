@@ -143,10 +143,10 @@ CeladonCity_GameCorner_PrizeRoom_EventScript_GiveClefairy::
 
 CeladonCity_GameCorner_PrizeRoom_EventScript_GiveDratini::
 	.ifdef FIRERED
-	givemon VAR_TEMP_1, 18
+	givemonhighiv VAR_TEMP_1, 18
 	.else
 	.ifdef LEAFGREEN
-	givemon VAR_TEMP_1, 24
+	givemonhighiv VAR_TEMP_1, 24
 	.endif
 	.endif
 	goto CeladonCity_GameCorner_PrizeRoom_EventScript_CheckReceivedMon

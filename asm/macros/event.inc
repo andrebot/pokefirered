@@ -996,6 +996,18 @@
 	.byte 0
 	.endm
 
+	@ Gives the player a Pokémon with high iv of the specified species and level, holding the specified item. The trailing 0s are unused parameters.
+	@ VAR_RESULT will be set to MON_GIVEN_TO_PARTY, MON_GIVEN_TO_PC, or MON_CANT_GIVE depending on the outcome. 
+	.macro givemonhighiv species:req, level:req, item=ITEM_NONE
+	.byte 0xd5
+	.2byte \species
+	.byte \level
+	.2byte \item
+	.4byte 0
+	.4byte 0
+	.byte 0
+	.endm
+
 	@ Gives the player an Egg of the specified species.
 	@ VAR_RESULT will be set to MON_GIVEN_TO_PARTY, MON_GIVEN_TO_PC, or MON_CANT_GIVE depending on the outcome. 
 	.macro giveegg species:req
