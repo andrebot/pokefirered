@@ -665,18 +665,18 @@ bool8 UpdateVsSeekerStepCounter(void)
 
     if (CheckBagHasItem(ITEM_VS_SEEKER, 1) == TRUE)
     {
-        if ((gSaveBlock1Ptr->trainerRematchStepCounter & 0xFF) < 100)
+        if ((gSaveBlock1Ptr->trainerRematchStepCounter & 0xFF) < 25)
             gSaveBlock1Ptr->trainerRematchStepCounter++;
     }
 
     if (FlagGet(FLAG_SYS_VS_SEEKER_CHARGING) == TRUE)
     {
-        if (((gSaveBlock1Ptr->trainerRematchStepCounter >> 8) & 0xFF) < 100)
+        if (((gSaveBlock1Ptr->trainerRematchStepCounter >> 8) & 0xFF) < 25)
         {
             x = (((gSaveBlock1Ptr->trainerRematchStepCounter >> 8) & 0xFF) + 1);
             gSaveBlock1Ptr->trainerRematchStepCounter = (gSaveBlock1Ptr->trainerRematchStepCounter & 0xFF) | (x << 8);
         }
-        if (((gSaveBlock1Ptr->trainerRematchStepCounter >> 8) & 0xFF) == 100)
+        if (((gSaveBlock1Ptr->trainerRematchStepCounter >> 8) & 0xFF) == 25)
         {
             FlagClear(FLAG_SYS_VS_SEEKER_CHARGING);
             VsSeekerResetChargingStepCounter();
@@ -726,7 +726,7 @@ static void VsSeekerResetInBagStepCounter(void)
 static void VsSeekerSetStepCounterInBagFull(void)
 {
     gSaveBlock1Ptr->trainerRematchStepCounter &= 0xFF00;
-    gSaveBlock1Ptr->trainerRematchStepCounter |= 100;
+    gSaveBlock1Ptr->trainerRematchStepCounter |= 25;
 }
 
 static void VsSeekerResetChargingStepCounter(void)
@@ -737,7 +737,7 @@ static void VsSeekerResetChargingStepCounter(void)
 static void VsSeekerSetStepCounterFullyCharged(void)
 {
     gSaveBlock1Ptr->trainerRematchStepCounter &= 0x00FF;
-    gSaveBlock1Ptr->trainerRematchStepCounter |= (100 << 8);
+    gSaveBlock1Ptr->trainerRematchStepCounter |= (25 << 8);
 }
 
 void Task_VsSeeker_0(u8 taskId)
@@ -850,7 +850,7 @@ static void Task_VsSeeker_3(u8 taskId)
 static u8 CanUseVsSeeker(void)
 {
     u8 vsSeekerChargeSteps = gSaveBlock1Ptr->trainerRematchStepCounter;
-    if (vsSeekerChargeSteps == 100)
+    if (vsSeekerChargeSteps == 25)
     {
         if (GetRematchableTrainerLocalId() == 0xFF)
             return VSSEEKER_NO_ONE_IN_RANGE;
@@ -859,7 +859,7 @@ static u8 CanUseVsSeeker(void)
     }
     else
     {
-        TV_PrintIntToStringVar(0, 100 - vsSeekerChargeSteps);
+        TV_PrintIntToStringVar(0, 25 - vsSeekerChargeSteps);
         return VSSEEKER_NOT_CHARGED;
     }
 }
