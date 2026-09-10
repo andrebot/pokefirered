@@ -56,6 +56,15 @@ enum PokemonSummaryScreenStat
     PSS_STAT_SPE
 };
 
+// Right-pane view cycled with A on the Skills page: stats -> IVs -> EVs -> stats
+enum PokemonSummaryScreenSkillsView
+{
+    SKILLS_VIEW_STATS,
+    SKILLS_VIEW_IVS,
+    SKILLS_VIEW_EVS,
+    SKILLS_VIEW_COUNT
+};
+
 #define TAG_PSS_UNK_64 0x64
 #define TAG_PSS_UNK_65 0x65
 #define TAG_PSS_UNK_66 0x66

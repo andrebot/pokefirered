@@ -90,6 +90,8 @@ static void PokeSum_FinishSetup(void);
 static void BufferMonInfo(void);
 static void BufferMonSkills(void);
 static void BufferMonIVs(void);
+static void BufferMonEVs(void);
+static const u8 *PokeSum_SkillsControlsString(void);
 static void BufferMonMoves(void);
 static u8 StatusToAilment(u32 status);
 static void BufferMonMoveI(u8);
@@ -176,6 +178,7 @@ struct PokemonSummaryScreenData
         u8 ALIGNED(4) curHpStrBuf[9];
         u8 ALIGNED(4) statValueStrBufs[5][5];
         u8 ALIGNED(4) ivValueStrBufs[6][5]; /* HP, ATK, DEF, SPATK, SPDEF, SPEED */
+        u8 ALIGNED(4) evValueStrBufs[6][5]; /* HP, ATK, DEF, SPATK, SPDEF, SPEED */
 
         u8 ALIGNED(4) moveCurPpStrBufs[5][11];
         u8 ALIGNED(4) moveMaxPpStrBufs[5][11];
@@ -207,7 +210,7 @@ struct PokemonSummaryScreenData
     u8 ALIGNED(4) unk3230; /* 0x3230 */
 
     u8 ALIGNED(4) lockMovesFlag; /* 0x3234 */
-    u8 ALIGNED(4) isShowingIVs; /* 0x3235 - flag to show IVs instead of stats on Skills page */
+    u8 ALIGNED(4) skillsPageView; /* 0x3235 - SKILLS_VIEW_* : stats / IVs / EVs on the Skills page */
 
     u8 ALIGNED(4) whichBgLayerToTranslate; /* 0x3238 */
     u8 ALIGNED(4) skillsPageBgNum; /* 0x323C */
@@ -262,12 +265,8 @@ struct Struct203B144
     u16 curPp[5];
     u16 maxPp[5];
 
-    u16 hpIVStr;
-    u16 atkIVStr;
-    u16 defIVStr;
-    u16 spAIVStr;
-    u16 spDIVStr;
-    u16 speIVStr;
+    u16 ivStr[6]; /* HP, ATK, DEF, SPATK, SPDEF, SPEED */
+    u16 evStr[6];
 
     u16 unk26;
 };
@@ -1042,7 +1041,7 @@ void ShowPokemonSummaryScreen(struct Pokemon * party, u8 cursorPos, u8 lastIdx, 
     sMonSummaryScreen->skillsPageBgNum = 2;
     sMonSummaryScreen->infoAndMovesPageBgNum = 1;
     sMonSummaryScreen->flippingPages = FALSE;
-    sMonSummaryScreen->isShowingIVs = FALSE;
+    sMonSummaryScreen->skillsPageView = SKILLS_VIEW_STATS;
 
     sMonSummaryScreen->unk3228 = 0;
     sMonSummaryScreen->unk322C = 1;
@@ -1150,7 +1149,7 @@ static void Task_InputHandler_Info(u8 taskId)
                     sMonSummaryScreen->pageFlipDirection = 1;
                     PokeSum_RemoveWindows(sMonSummaryScreen->curPageIndex);
                     sMonSummaryScreen->curPageIndex++;
-                    sMonSummaryScreen->isShowingIVs = FALSE; // Reset IVs display when switching pages
+                    sMonSummaryScreen->skillsPageView = SKILLS_VIEW_STATS; // Reset to stats when switching pages
                     sMonSummaryScreen->state3270 = PSS_STATE3270_FLIPPAGES;
                 }
                 return;
@@ -1169,7 +1168,7 @@ static void Task_InputHandler_Info(u8 taskId)
                     sMonSummaryScreen->pageFlipDirection = 0;
                     PokeSum_RemoveWindows(sMonSummaryScreen->curPageIndex);
                     sMonSummaryScreen->curPageIndex--;
-                    sMonSummaryScreen->isShowingIVs = FALSE; // Reset IVs display when switching pages
+                    sMonSummaryScreen->skillsPageView = SKILLS_VIEW_STATS; // Reset to stats when switching pages
                     sMonSummaryScreen->state3270 = PSS_STATE3270_FLIPPAGES;
                 }
                 return;
@@ -1197,12 +1196,15 @@ static void Task_InputHandler_Info(u8 taskId)
                 }
                 else if (sMonSummaryScreen->curPageIndex == PSS_PAGE_SKILLS)
                 {
-                    // Toggle IVs display on Skills page
+                    // Cycle the Skills right pane: stats -> IVs -> EVs -> stats
                     PlaySE(SE_SELECT);
-                    sMonSummaryScreen->isShowingIVs = TRUE;
+                    if (++sMonSummaryScreen->skillsPageView >= SKILLS_VIEW_COUNT)
+                        sMonSummaryScreen->skillsPageView = SKILLS_VIEW_STATS;
                     ClearWindowTilemap(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE]);
                     PokeSum_PrintRightPaneText();
                     CopyWindowToVram(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], 2);
+                    PokeSum_PrintControlsString(PokeSum_SkillsControlsString());
+                    CopyWindowToVram(sMonSummaryScreen->windowIds[POKESUM_WIN_CONTROLS], 2);
                 }
                 else if (sMonSummaryScreen->curPageIndex == PSS_PAGE_MOVES)
                 {
@@ -1216,19 +1218,7 @@ static void Task_InputHandler_Info(u8 taskId)
             }
             else if (JOY_NEW(B_BUTTON))
             {
-                if (sMonSummaryScreen->curPageIndex == PSS_PAGE_SKILLS && sMonSummaryScreen->isShowingIVs)
-                {
-                    // Toggle back to stats display on Skills page
-                    PlaySE(SE_SELECT);
-                    sMonSummaryScreen->isShowingIVs = FALSE;
-                    ClearWindowTilemap(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE]);
-                    PokeSum_PrintRightPaneText();
-                    CopyWindowToVram(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], 2);
-                }
-                else
-                {
-                    sMonSummaryScreen->state3270 = PSS_STATE3270_ATEXIT_FADEOUT;
-                }
+                sMonSummaryScreen->state3270 = PSS_STATE3270_ATEXIT_FADEOUT;
             }
         }
         break;
@@ -2099,6 +2089,7 @@ static u8 PokeSum_Setup_BufferStrings(void)
         {
             BufferMonSkills();
             BufferMonIVs();
+            BufferMonEVs();
         }
         break;
     case 2:
@@ -2276,39 +2267,49 @@ static void BufferMonSkills(void)
             sMonSummaryScreen->curMonStatusAilment = AILMENT_PKRS;
 }
 
+// Format the 6 "gene" values (IVs or EVs) into dstBufs and record each x-alignment.
+// monDataIds / row order: HP, ATK, DEF, SP.ATK, SP.DEF, SPEED.
+static void BufferMonGeneColumn(const u8 *monDataIds, u8 dstBufs[][5], u16 *xAlign)
+{
+    u8 i;
+
+    for (i = 0; i < 6; i++)
+    {
+        u32 value = GetMonData(&sMonSummaryScreen->currentMon, monDataIds[i]);
+        ConvertIntToDecimalStringN(dstBufs[i], value, STR_CONV_MODE_LEFT_ALIGN, 3);
+        xAlign[i] = GetNumberRightAlign27(dstBufs[i]);
+    }
+}
+
 static void BufferMonIVs(void)
 {
-    u8 ivValue;
+    static const u8 sIvDataIds[6] = {
+        MON_DATA_HP_IV, MON_DATA_ATK_IV, MON_DATA_DEF_IV,
+        MON_DATA_SPATK_IV, MON_DATA_SPDEF_IV, MON_DATA_SPEED_IV
+    };
 
-    // HP IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_HP_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[0], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->hpIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[0]);
+    BufferMonGeneColumn(sIvDataIds, sMonSummaryScreen->summary.ivValueStrBufs, sMonSkillsPrinterXpos->ivStr);
+}
 
-    // Attack IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_ATK_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[1], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->atkIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[1]);
+// Effort values (0-255 each), shown on the Skills page after the IV view
+static void BufferMonEVs(void)
+{
+    static const u8 sEvDataIds[6] = {
+        MON_DATA_HP_EV, MON_DATA_ATK_EV, MON_DATA_DEF_EV,
+        MON_DATA_SPATK_EV, MON_DATA_SPDEF_EV, MON_DATA_SPEED_EV
+    };
 
-    // Defense IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_DEF_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[2], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->defIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[2]);
+    BufferMonGeneColumn(sEvDataIds, sMonSummaryScreen->summary.evValueStrBufs, sMonSkillsPrinterXpos->evStr);
+}
 
-    // Sp. Attack IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SPATK_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[3], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->spAIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[3]);
-
-    // Sp. Defense IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SPDEF_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[4], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->spDIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[4]);
-
-    // Speed IV
-    ivValue = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SPEED_IV);
-    ConvertIntToDecimalStringN(sMonSummaryScreen->summary.ivValueStrBufs[5], ivValue, STR_CONV_MODE_LEFT_ALIGN, 3);
-    sMonSkillsPrinterXpos->speIVStr = GetNumberRightAlign27(sMonSummaryScreen->summary.ivValueStrBufs[5]);
+// Footer hint for the current Skills view (A cycles stats -> IVs -> EVs)
+static const u8 *PokeSum_SkillsControlsString(void)
+{
+    if (sMonSummaryScreen->skillsPageView == SKILLS_VIEW_IVS)
+        return gText_PokeSum_Controls_PageEVs;
+    if (sMonSummaryScreen->skillsPageView == SKILLS_VIEW_EVS)
+        return gText_PokeSum_Controls_PageStats;
+    return gText_PokeSum_Controls_PageIVs;
 }
 
 static void BufferMonMoves(void)
@@ -2568,33 +2569,43 @@ static void PrintInfoPage(void)
     }
 }
 
+// Draw the 6 gene values (IV or EV) into the Skills right pane at the stat rows.
+static void PrintSkillsGeneColumn(u8 win, const u16 *xAlign, u8 strBufs[][5])
+{
+    static const u8 sGeneRowYpos[6] = { 4, 22, 35, 48, 61, 74 };
+    u8 i;
+
+    for (i = 0; i < 6; i++)
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 50 + xAlign[i], sGeneRowYpos[i], sLevelNickTextColors[0], TEXT_SKIP_DRAW, strBufs[i]);
+}
+
 static void PrintSkillsPage(void)
 {
-    if (sMonSummaryScreen->isShowingIVs)
+    u8 win = sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE];
+
+    if (sMonSummaryScreen->skillsPageView == SKILLS_VIEW_STATS)
     {
-        // Show IVs instead of stats
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->hpIVStr, 4, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[0]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->atkIVStr, 22, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[1]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->defIVStr, 35, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[2]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spAIVStr, 48, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[3]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spDIVStr, 61, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[4]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->speIVStr, 74, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.ivValueStrBufs[5]);
-        // Also show EXP points and next level (same positions as normal stats page)
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 15 + sMonSkillsPrinterXpos->expStr, 87, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expPointsStrBuf);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 15 + sMonSkillsPrinterXpos->toNextLevel, 100, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expToNextLevelStrBuf);
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 14 + sMonSkillsPrinterXpos->curHpStr, 4, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.curHpStrBuf);
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 50 + sMonSkillsPrinterXpos->atkStr, 22, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_ATK]);
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 50 + sMonSkillsPrinterXpos->defStr, 35, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_DEF]);
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spAStr, 48, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPA]);
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spDStr, 61, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPD]);
+        AddTextPrinterParameterized3(win, FONT_NORMAL, 50 + sMonSkillsPrinterXpos->speStr, 74, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPE]);
     }
-    else
+    else if (sMonSummaryScreen->skillsPageView == SKILLS_VIEW_IVS)
     {
-        // Show normal stats
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 14 + sMonSkillsPrinterXpos->curHpStr, 4, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.curHpStrBuf);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->atkStr, 22, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_ATK]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->defStr, 35, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_DEF]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spAStr, 48, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPA]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->spDStr, 61, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPD]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 50 + sMonSkillsPrinterXpos->speStr, 74, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.statValueStrBufs[PSS_STAT_SPE]);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 15 + sMonSkillsPrinterXpos->expStr, 87, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expPointsStrBuf);
-        AddTextPrinterParameterized3(sMonSummaryScreen->windowIds[POKESUM_WIN_RIGHT_PANE], FONT_NORMAL, 15 + sMonSkillsPrinterXpos->toNextLevel, 100, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expToNextLevelStrBuf);
+        PrintSkillsGeneColumn(win, sMonSkillsPrinterXpos->ivStr, sMonSummaryScreen->summary.ivValueStrBufs);
+        AddTextPrinterParameterized3(win, FONT_SMALL, 2, 3, sLevelNickTextColors[0], TEXT_SKIP_DRAW, gText_PokeSum_IVLabel);
     }
+    else // SKILLS_VIEW_EVS
+    {
+        PrintSkillsGeneColumn(win, sMonSkillsPrinterXpos->evStr, sMonSummaryScreen->summary.evValueStrBufs);
+        AddTextPrinterParameterized3(win, FONT_SMALL, 2, 3, sLevelNickTextColors[0], TEXT_SKIP_DRAW, gText_PokeSum_EVLabel);
+    }
+
+    // EXP points and next level are shown in every view (same positions)
+    AddTextPrinterParameterized3(win, FONT_NORMAL, 15 + sMonSkillsPrinterXpos->expStr, 87, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expPointsStrBuf);
+    AddTextPrinterParameterized3(win, FONT_NORMAL, 15 + sMonSkillsPrinterXpos->toNextLevel, 100, sLevelNickTextColors[0], TEXT_SKIP_DRAW, sMonSummaryScreen->summary.expToNextLevelStrBuf);
 }
 
 #define GetMoveNamePrinterYpos(x) ((x) * 28 + 5)
@@ -3030,7 +3041,7 @@ static void PokeSum_PrintPageHeaderText(u8 curPageIndex)
         break;
     case PSS_PAGE_SKILLS:
         PokeSum_PrintPageName(gText_PokeSum_PageName_PokemonSkills);
-        PokeSum_PrintControlsString(gText_PokeSum_Controls_PageIVs);
+        PokeSum_PrintControlsString(PokeSum_SkillsControlsString());
         PrintMonLevelNickOnWindow2(gText_PokeSum_NoData);
         break;
     case PSS_PAGE_MOVES:
@@ -5151,7 +5162,7 @@ static void Task_PokeSum_SwitchDisplayedPokemon(u8 taskId)
         break;
     case 2:
         BufferSelectedMonData(&sMonSummaryScreen->currentMon);
-        sMonSummaryScreen->isShowingIVs = FALSE; // Reset IVs display when switching Pokemon
+        sMonSummaryScreen->skillsPageView = SKILLS_VIEW_STATS; // Reset to stats when switching Pokemon
 
         sMonSummaryScreen->isEgg = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_IS_EGG);
         sMonSummaryScreen->isBadEgg = GetMonData(&sMonSummaryScreen->currentMon, MON_DATA_SANITY_IS_BAD_EGG);
