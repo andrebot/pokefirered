@@ -348,6 +348,50 @@ Then proceed to [Choosing where to store pokefirered (Linux)](#choosing-where-to
 >   [install devkitARM on Debian/Ubuntu-based distributions](#installing-devkitarm-on-debianubuntu-based-distributions).
 </details>
 
+### Arch-based distributions (Arch, Manjaro, EndeavourOS, CachyOS, …)
+Install the packages for the default (agbcc) build:
+```bash
+sudo pacman -S --needed base-devel git perl libpng arm-none-eabi-binutils
+```
+`arm-none-eabi-binutils` supplies the assembler/linker; the compiler itself is `agbcc`, built from
+source in [Installation](#installation) below — nothing else is needed for `make`.
+
+To also build the `make modern` target (see [devkitARM's C compiler](#devkitarms-c-compiler)),
+install the ARM GCC toolchain as well:
+```bash
+sudo pacman -S --needed arm-none-eabi-gcc arm-none-eabi-newlib
+```
+
+Then either follow [Choosing where to store pokefirered (Linux)](#choosing-where-to-store-pokefirered-linux)
+→ [Installation](#installation) → [Build pokefirered](#build-pokefirered), or run the whole sequence
+from the directory where you want `pokefirered` and `agbcc` to live:
+```bash
+git clone https://github.com/pret/pokefirered
+git clone https://github.com/pret/agbcc
+cd agbcc && ./build.sh && ./install.sh ../pokefirered && cd ../pokefirered
+make -j$(nproc)          # produces pokefirered.gba
+```
+On a later checkout where `agbcc` is already built, just re-install it into the repo
+(`cd ../agbcc && ./install.sh ../pokefirered`) instead of rebuilding.
+
+<details>
+    <summary><i>Note for recent GCC (13 or newer)...</i></summary>
+
+>   Some of the bundled build tools predate `<cstdint>` being required as an explicit include and
+>   fail on GCC 13+ with `error: 'uint8_t' does not name a type`. If `make` stops while building a
+>   tool (commonly `tools/mapjson`, sometimes `tools/mid2agb` / `tools/jsonproc` / `tools/preproc`),
+>   add `#include <cstdint>` to that tool's failing `.cpp`/`.hpp` file (next to its other `#include`
+>   lines) and re-run `make`.
+</details>
+<details>
+    <summary><i>Note for CachyOS...</i></summary>
+
+>   CachyOS's repos sometimes advertise an `arm-none-eabi-gcc` build that no longer exists on the
+>   mirrors, giving a 404 during download. This only affects the optional `make modern` toolchain,
+>   not the default `make` build. If you hit it, run `sudo pacman -Syu` first, or pull the package
+>   straight from Arch's repo with `sudo pacman -S extra/arm-none-eabi-gcc`.
+</details>
+
 ### Other distributions
 _(Specific instructions for other distributions would be greatly appreciated!)_
 
