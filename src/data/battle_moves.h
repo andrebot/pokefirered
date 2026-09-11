@@ -2448,9 +2448,9 @@ const struct BattleMove gBattleMoves[MOVES_COUNT] =
     [MOVE_SLUDGE_BOMB] =
     {
         .effect = EFFECT_POISON_HIT,
-        .power = 90,
+        .power = 120,
         .type = TYPE_POISON,
-        .accuracy = 100,
+        .accuracy = 90,
         .pp = 10,
         .secondaryEffectChance = 30,
         .target = MOVE_TARGET_SELECTED,
