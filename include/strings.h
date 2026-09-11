@@ -1005,6 +1005,11 @@ extern const u8 gText_CancelPreviousData[];
 extern const u8 gText_Area[];
 extern const u8 gText_Size[];
 extern const u8 gText_AreaUnknown[];
+extern const u8 gText_DexLearnset[];
+extern const u8 gText_DexTmHm[];
+extern const u8 gText_NextDataPreviousData[];
+extern const u8 gText_TM[];
+extern const u8 gText_HM[];
 
 // daycare
 extern const u8 gText_Lv[];

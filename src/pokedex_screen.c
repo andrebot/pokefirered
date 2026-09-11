@@ -20,6 +20,9 @@
 #include "constants/sound.h"
 #include "pokedex_area_markers.h"
 #include "field_specials.h"
+#include "party_menu.h"
+#include "constants/items.h"
+#include "constants/moves.h"
 
 #define TAG_AREA_MARKERS 2001
 
@@ -91,6 +94,8 @@ struct PokedexCategoryPage
     u8 count;
 };
 
+struct DexLearnsetPageResources; // Defined near DexScreen_DrawMonLearnsetPage, below.
+
 EWRAM_DATA static struct PokedexScreenData * sPokedexScreenData = NULL;
 
 static void Task_PokedexScreen(u8 taskId);
@@ -122,6 +127,7 @@ static bool8 DexScreen_FlipCategoryPageInDirection(u8 direction);
 void DexScreen_DexPageZoomEffectFrame(u8 bg, u8 scale);
 static u8 DexScreen_DrawMonDexPage(bool8 justRegistered);
 u8 RemoveDexPageWindows(void);
+static void DexScreen_DrawContentFrame(u8 bg);
 u8 DexScreen_DrawMonAreaPage(void);
 static bool8 DexScreen_IsPageUnlocked(u8 category, u8 pageNum);
 static bool8 DexScreen_IsCategoryUnlocked(u8 category);
@@ -137,6 +143,18 @@ static void ItemPrintFunc_DexModeSelect(u8 windowId, u32 itemId, u8 y);
 static void ItemPrintFunc_OrderedListMenu(u8 windowId, u32 itemId, u8 y);
 static void Task_DexScreen_RegisterNonKantoMonBeforeNationalDex(u8 taskId);
 static void Task_DexScreen_RegisterMonToPokedex(u8 taskId);
+static void DexScreen_BuildLevelUpColumn(u16 species, struct DexLearnsetPageResources *res);
+static void DexScreen_BuildTmHmColumn(u16 species, struct DexLearnsetPageResources *res);
+static void ItemPrintFunc_DexLearnsetColumn(u8 windowId, u32 itemId, u8 y);
+static void DexScreen_InitLearnsetColumnListMenu(u8 column);
+static u8 DexScreen_CreateLearnsetPageScrollArrows(u8 column);
+static void DexScreen_LearnsetPage_PrintHeader(u8 column);
+static u8 DexScreen_ShowLearnsetColumnPage(u8 column);
+static void DexScreen_HideLearnsetColumnPage(void);
+static u8 DexScreen_SwitchLearnsetPageColumn(u8 newColumn);
+static u8 DexScreen_DrawMonLearnsetPage(void);
+static u8 DexScreen_LearnsetPageHandleInput(void);
+static void DexScreen_DestroyLearnsetPageResources(void);
 
 #include "data/pokemon_graphics/footprint_table.h"
 
@@ -1562,6 +1580,378 @@ static void ItemPrintFunc_OrderedListMenu(u8 windowId, u32 itemId, u8 y)
     }
 }
 
+// --- Learnset / TM-HM pages -------------------------------------------------
+//
+// Two pages inserted between the description page and the AREA page, shown
+// only for caught species: one lists the species' level-up learnset, the
+// other every TM/HM it can learn. Each is a single full-width scrolling
+// ListMenu so a long list never has to be capped or laid out by hand, and so
+// a full-length move name always has room to print without bleeding off the
+// screen (a shared two-column page was tried first; even with only a type
+// icon and a level/TM-number prefix alongside it, a 120px-wide column isn't
+// enough room for a 12-character move name).
+//
+// Both pages share one struct: the level-up and TM/HM row data are built up
+// front (cheap, and it means switching pages never re-scans the move data),
+// but only one column's window/ListMenu/scroll-arrows exist on screen at a
+// time -- see DexScreen_ShowLearnsetColumnPage / DexScreen_SwitchLearnsetPageColumn.
+
+#define DEX_LEARNSET_COL_LEVELUP 0
+#define DEX_LEARNSET_COL_TMHM    1
+#define DEX_LEARNSET_NUM_COLUMNS 2
+// Also large enough for the level-up column (bounded by MAX_LEVEL_UP_MOVES).
+#define DEX_LEARNSET_MAX_ROWS (NUM_TECHNICAL_MACHINES + NUM_HIDDEN_MACHINES)
+#define DEX_LEARNSET_ROWS_SHOWN 8
+// "100 " or "HM08 " (whichever prefix is longer) + a move name + EOS.
+#define DEX_LEARNSET_ROW_BUF_LEN (5 + MOVE_NAME_LENGTH + 1)
+
+enum
+{
+    DEX_LEARNSET_INPUT_NONE,
+    DEX_LEARNSET_INPUT_NEXT, // A: advance (learnset -> TM/HM -> AREA)
+    DEX_LEARNSET_INPUT_BACK, // B: retreat (TM/HM -> learnset -> description)
+};
+
+struct DexLearnsetPageResources
+{
+    u16 moves[DEX_LEARNSET_NUM_COLUMNS][DEX_LEARNSET_MAX_ROWS];
+    u8 rowStrbufs[DEX_LEARNSET_NUM_COLUMNS][DEX_LEARNSET_MAX_ROWS][DEX_LEARNSET_ROW_BUF_LEN];
+    struct ListMenuItem items[DEX_LEARNSET_NUM_COLUMNS][DEX_LEARNSET_MAX_ROWS];
+    u8 numRows[DEX_LEARNSET_NUM_COLUMNS];
+    u8 headerWindowId;
+    u8 listWindowId;
+    u8 listTaskId;
+    u16 scrollOffset;
+    u8 scrollArrowsTaskId;
+    u8 shownColumn; // Which column the single visible page is currently showing.
+};
+
+EWRAM_DATA static struct DexLearnsetPageResources * sDexLearnsetPage = NULL;
+
+static const struct WindowTemplate sWindowTemplate_LearnsetPage_Header = {
+    .bg = 1,
+    .tilemapLeft = 0,
+    .tilemapTop = 2,
+    .width = 30,
+    .height = 2,
+    .paletteNum = 0,
+    .baseBlock = 0x0008
+};
+
+// DexScreen_DrawContentFrame(3) draws its border at columns 0 and 29 (screen
+// x 0-8 and 232-240); this window is inset to columns 1-28 so nothing drawn
+// inside it (the type icons in particular) can render on top of that border.
+static const struct WindowTemplate sWindowTemplate_LearnsetPage_List = {
+    .bg = 1,
+    .tilemapLeft = 1,
+    .tilemapTop = 4,
+    .width = 28,
+    .height = 14,
+    .paletteNum = 0,
+    .baseBlock = 0x0044
+};
+
+// Splits the list window into a type-icon strip (types palette) and a text
+// strip (the dex screen's base palette, which already carries the usual text
+// colors) -- the same technique DexScreen_DrawMonAreaPage's numerical order
+// list uses for its own inline type icons.
+static const struct ListMenuWindowRect sListMenuRects_DexLearnsetColumn[] = {
+    { .x = 0, .y = 0, .width = 4,  .height = 14, .palNum = 2 },
+    { .x = 4, .y = 0, .width = 24, .height = 14, .palNum = 0 },
+    { .x = 0xFF, .y = 0xFF, .width = 0xFF, .height = 0xFF, .palNum = 0xFF },
+};
+
+static const struct ListMenuTemplate sListMenuTemplate_DexLearnsetColumn = {
+    .items = NULL,
+    .moveCursorFunc = ListMenuDefaultCursorMoveFunc,
+    .itemPrintFunc = ItemPrintFunc_DexLearnsetColumn,
+    .totalItems = 0,
+    .maxShowed = DEX_LEARNSET_ROWS_SHOWN,
+    .windowId = 0,
+    .header_X = 0,
+    .item_X = 44,
+    .cursor_X = 36, // Just past the 32px-wide type icon, so the cursor doesn't overlap it.
+    .upText_Y = 2,
+    .cursorPal = 1,
+    .fillValue = 0,
+    .cursorShadowPal = 3,
+    .lettersSpacing = 0,
+    .itemVerticalPadding = 0,
+    .scrollMultiple = 0,
+    .fontId = FONT_SMALL,
+    // A printed cursor, like every other scrolling list in the game: without
+    // one, ListMenu's "walk the selection to the middle row, then scroll"
+    // behavior is invisible, and pressing Down/Up does nothing on screen for
+    // several presses before the list actually scrolls.
+    .cursorKind = 0,
+};
+
+// Only one learnset-page column is ever on screen at a time now, so one
+// shared arrow position (near the right edge of the full-width list) covers
+// both pages. X is inset from the screen edge so the 16px-wide arrow sprite
+// sits inside the content frame's border (see sWindowTemplate_LearnsetPage_List)
+// instead of overlapping it.
+static const struct ScrollArrowsTemplate sScrollArrowsTemplate_DexLearnsetColumn = {
+    .firstArrowType = 2,
+    .firstX = 216,
+    .firstY = 34,
+    .secondArrowType = 3,
+    .secondX = 216,
+    .secondY = 138,
+    .fullyUpThreshold = 0,
+    .fullyDownThreshold = 0,
+    .tileTag = 2000,
+    .palTag = 0xFFFF,
+    .palNum = 1,
+};
+
+/*
+ * Fills the level-up column of `res` with every level-up move `species`
+ * learns, in level order, and composes each row's printable
+ * "<level> <move name>" label. Writes the row count to
+ * res->numRows[DEX_LEARNSET_COL_LEVELUP].
+ */
+static void DexScreen_BuildLevelUpColumn(u16 species, struct DexLearnsetPageResources *res)
+{
+    int i;
+    u8 count = 0;
+
+    for (i = 0; i < MAX_LEVEL_UP_MOVES && gLevelUpLearnsets[species][i] != LEVEL_UP_END; i++)
+    {
+        u16 entry = gLevelUpLearnsets[species][i];
+        u16 move = entry & LEVEL_UP_MOVE_ID;
+        u8 level = (entry & LEVEL_UP_MOVE_LV) >> 9;
+        u8 *strEnd = ConvertIntToDecimalStringN(res->rowStrbufs[DEX_LEARNSET_COL_LEVELUP][count], level, STR_CONV_MODE_RIGHT_ALIGN, 3);
+
+        *strEnd++ = CHAR_SPACE;
+        StringCopy(strEnd, gMoveNames[move]);
+        res->moves[DEX_LEARNSET_COL_LEVELUP][count] = move;
+        count++;
+    }
+    res->numRows[DEX_LEARNSET_COL_LEVELUP] = count;
+}
+
+/*
+ * Fills the TM/HM column of `res` with every TM and HM `species` can learn,
+ * in machine order (TM01..TM50, then HM01..HM08), and composes each row's
+ * printable "<TM/HM number> <move name>" label. Writes the row count to
+ * res->numRows[DEX_LEARNSET_COL_TMHM].
+ */
+static void DexScreen_BuildTmHmColumn(u16 species, struct DexLearnsetPageResources *res)
+{
+    int tm;
+    u8 count = 0;
+
+    for (tm = 0; tm < NUM_TECHNICAL_MACHINES + NUM_HIDDEN_MACHINES; tm++)
+    {
+        u16 move;
+        bool8 isHm;
+        u8 number;
+        u8 *strbuf;
+        u8 *strEnd;
+
+        if (!CanSpeciesLearnTMHM(species, tm))
+            continue;
+
+        isHm = (tm >= NUM_TECHNICAL_MACHINES);
+        number = isHm ? (tm - NUM_TECHNICAL_MACHINES + 1) : (tm + 1);
+        move = ItemIdToBattleMoveId(ITEM_TM01_FOCUS_PUNCH + tm);
+
+        strbuf = res->rowStrbufs[DEX_LEARNSET_COL_TMHM][count];
+        StringCopy(strbuf, isHm ? gText_HM : gText_TM);
+        strEnd = ConvertIntToDecimalStringN(strbuf + 2, number, STR_CONV_MODE_LEADING_ZEROS, 2);
+        *strEnd++ = CHAR_SPACE;
+        StringCopy(strEnd, gMoveNames[move]);
+
+        res->moves[DEX_LEARNSET_COL_TMHM][count] = move;
+        count++;
+    }
+    res->numRows[DEX_LEARNSET_COL_TMHM] = count;
+}
+
+/*
+ * ListMenu itemPrintFunc for both learnset-page columns. `itemId` is the move
+ * id for the row (see DexScreen_InitLearnsetColumnListMenu), which is enough
+ * on its own to draw the row's type icon in the icon strip reserved for it by
+ * sListMenuRects_DexLearnsetColumn. The move name itself is printed by the
+ * ListMenu from the row's label.
+ */
+static void ItemPrintFunc_DexLearnsetColumn(u8 windowId, u32 itemId, u8 y)
+{
+    if (itemId != MOVE_NONE)
+        BlitMenuInfoIcon(windowId, gBattleMoves[itemId].type + 1, 0, y);
+}
+
+/*
+ * Builds the ListMenuItem array for one learnset-page column from the rows
+ * DexScreen_BuildLevelUpColumn / DexScreen_BuildTmHmColumn already filled in,
+ * and starts a ListMenu bound to the single list window.
+ */
+static void DexScreen_InitLearnsetColumnListMenu(u8 column)
+{
+    int i;
+    struct ListMenuTemplate template = sListMenuTemplate_DexLearnsetColumn;
+
+    for (i = 0; i < sDexLearnsetPage->numRows[column]; i++)
+    {
+        sDexLearnsetPage->items[column][i].label = sDexLearnsetPage->rowStrbufs[column][i];
+        sDexLearnsetPage->items[column][i].index = sDexLearnsetPage->moves[column][i];
+    }
+
+    template.items = sDexLearnsetPage->items[column];
+    template.totalItems = sDexLearnsetPage->numRows[column];
+    template.windowId = sDexLearnsetPage->listWindowId;
+
+    sDexLearnsetPage->scrollOffset = 0;
+    sDexLearnsetPage->shownColumn = column;
+    sDexLearnsetPage->listTaskId = ListMenuInitInRect(&template, sListMenuRects_DexLearnsetColumn, 0, 0);
+}
+
+/*
+ * Creates the scroll-indicator arrow pair for the given learnset-page
+ * column, sized to how far that column can actually scroll.
+ */
+static u8 DexScreen_CreateLearnsetPageScrollArrows(u8 column)
+{
+    struct ScrollArrowsTemplate template = sScrollArrowsTemplate_DexLearnsetColumn;
+    u8 numRows = sDexLearnsetPage->numRows[column];
+
+    if (numRows > DEX_LEARNSET_ROWS_SHOWN)
+        template.fullyDownThreshold = numRows - DEX_LEARNSET_ROWS_SHOWN;
+    else
+        template.fullyDownThreshold = 0;
+
+    return AddScrollIndicatorArrowPair(&template, &sDexLearnsetPage->scrollOffset);
+}
+
+/*
+ * Prints the given column's page title, centered in the header window.
+ */
+static void DexScreen_LearnsetPage_PrintHeader(u8 column)
+{
+    const u8 *title = (column == DEX_LEARNSET_COL_LEVELUP) ? gText_DexLearnset : gText_DexTmHm;
+    s32 strWidth = GetStringWidth(FONT_SMALL, title, 0);
+
+    FillWindowPixelBuffer(sDexLearnsetPage->headerWindowId, PIXEL_FILL(0));
+    DexScreen_AddTextPrinterParameterized(sDexLearnsetPage->headerWindowId, FONT_SMALL, title,
+        (sWindowTemplate_LearnsetPage_Header.width * 8 - strWidth) / 2, 2, 0);
+    PutWindowTilemap(sDexLearnsetPage->headerWindowId);
+    CopyWindowToVram(sDexLearnsetPage->headerWindowId, COPYWIN_GFX);
+}
+
+/*
+ * Draws the single-column page for the given learnset-page column: the
+ * header title, the full-width scrolling ListMenu with its type-icon strip,
+ * the scroll arrows, and the control-hint bar. DexScreen_BuildLevelUpColumn /
+ * DexScreen_BuildTmHmColumn must already have filled sDexLearnsetPage's row
+ * data before this is called.
+ */
+static u8 DexScreen_ShowLearnsetColumnPage(u8 column)
+{
+    ListMenuLoadStdPalAt(BG_PLTT_ID(2), 1);
+
+    sDexLearnsetPage->headerWindowId = AddWindow(&sWindowTemplate_LearnsetPage_Header);
+    sDexLearnsetPage->listWindowId = AddWindow(&sWindowTemplate_LearnsetPage_List);
+
+    DexScreen_InitLearnsetColumnListMenu(column);
+    DexScreen_LearnsetPage_PrintHeader(column);
+    sDexLearnsetPage->scrollArrowsTaskId = DexScreen_CreateLearnsetPageScrollArrows(column);
+
+    FillWindowPixelBuffer(1, PIXEL_FILL(15));
+    DexScreen_AddTextPrinterParameterized(1, FONT_SMALL, gText_Cry, 8, 2, 4);
+    DexScreen_PrintControlInfo(gText_NextDataPreviousData);
+    PutWindowTilemap(1);
+    CopyWindowToVram(1, COPYWIN_GFX);
+
+    return 1;
+}
+
+/*
+ * Tears down whichever learnset-page column is currently shown (the list
+ * window, its ListMenu, the header window, and the scroll-arrow pair), but
+ * keeps the already-built row data in sDexLearnsetPage alive -- used both to
+ * switch to the other column and, via DexScreen_DestroyLearnsetPageResources,
+ * to leave the feature entirely.
+ */
+static void DexScreen_HideLearnsetColumnPage(void)
+{
+    RemoveScrollIndicatorArrowPair(sDexLearnsetPage->scrollArrowsTaskId);
+    DestroyListMenuTask(sDexLearnsetPage->listTaskId, NULL, NULL);
+    DexScreen_RemoveWindow(&sDexLearnsetPage->listWindowId);
+    DexScreen_RemoveWindow(&sDexLearnsetPage->headerWindowId);
+}
+
+/*
+ * Switches the single visible learnset-page column, without rebuilding
+ * either column's move data.
+ */
+static u8 DexScreen_SwitchLearnsetPageColumn(u8 newColumn)
+{
+    DexScreen_HideLearnsetColumnPage();
+    return DexScreen_ShowLearnsetColumnPage(newColumn);
+}
+
+/*
+ * Renders the level-up learnset page for the species currently shown
+ * (sPokedexScreenData->dexSpecies): builds both the level-up and TM/HM
+ * columns' move lists (the TM/HM page reuses this same data when the player
+ * advances to it -- see DexScreen_SwitchLearnsetPageColumn) and shows the
+ * level-up column first. The caller is responsible for only reaching this
+ * page for a caught species.
+ */
+static u8 DexScreen_DrawMonLearnsetPage(void)
+{
+    u16 species = sPokedexScreenData->dexSpecies;
+
+    sDexLearnsetPage = Alloc(sizeof(struct DexLearnsetPageResources));
+    if (sDexLearnsetPage == NULL)
+        return 0;
+
+    // Always repaint BG3 with the plain content frame -- whichever page was
+    // drawn before this one may have left something else there (most
+    // notably the description page's frame, which has a divider partway
+    // down that would otherwise show through behind the list window).
+    DexScreen_DrawContentFrame(3);
+
+    DexScreen_BuildLevelUpColumn(species, sDexLearnsetPage);
+    DexScreen_BuildTmHmColumn(species, sDexLearnsetPage);
+
+    return DexScreen_ShowLearnsetColumnPage(DEX_LEARNSET_COL_LEVELUP);
+}
+
+/*
+ * Per-frame input for whichever learnset-page column is currently shown:
+ * forwards Up/Down to its ListMenu, and reports whether the player pressed A
+ * (advance) or B (retreat) so the caller can decide -- based on
+ * sDexLearnsetPage->shownColumn -- whether that means switching to the other
+ * learnset-page column or leaving the feature entirely.
+ */
+static u8 DexScreen_LearnsetPageHandleInput(void)
+{
+    ListMenu_ProcessInput(sDexLearnsetPage->listTaskId);
+    ListMenuGetScrollAndRow(sDexLearnsetPage->listTaskId, &sDexLearnsetPage->scrollOffset, NULL);
+
+    if (JOY_NEW(A_BUTTON))
+        return DEX_LEARNSET_INPUT_NEXT;
+    if (JOY_NEW(B_BUTTON))
+        return DEX_LEARNSET_INPUT_BACK;
+    DexScreen_InputHandler_StartToCry();
+    return DEX_LEARNSET_INPUT_NONE;
+}
+
+/*
+ * Leaves the learnset/TM-HM feature entirely: tears down whichever column is
+ * currently shown and frees the row data both columns share.
+ */
+static void DexScreen_DestroyLearnsetPageResources(void)
+{
+    DexScreen_HideLearnsetColumnPage();
+    Free(sDexLearnsetPage);
+    sDexLearnsetPage = NULL;
+}
+
+// --- End learnset / TM-HM page ----------------------------------------------
+
 static void Task_DexScreen_CategorySubmenu(u8 taskId)
 {
     int pageFlipCmd;
@@ -1766,7 +2156,10 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
             RemoveDexPageWindows();
             FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
             CopyBgTilemapBufferToVram(1);
-            sPokedexScreenData->state = 21;
+            if (DexScreen_GetSetPokedexFlag(sPokedexScreenData->dexSpecies, FLAG_GET_CAUGHT, TRUE))
+                sPokedexScreenData->state = 27; // -> learnset page (caught only)
+            else
+                sPokedexScreenData->state = 21; // -> AREA page
         }
         else if (JOY_NEW(B_BUTTON))
         {
@@ -1851,7 +2244,10 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
         break;
     case 24:
         DexScreen_DestroyAreaScreenResources();
-        sPokedexScreenData->state = 25;
+        if (DexScreen_GetSetPokedexFlag(sPokedexScreenData->dexSpecies, FLAG_GET_CAUGHT, TRUE))
+            sPokedexScreenData->state = 27; // -> learnset page (caught only)
+        else
+            sPokedexScreenData->state = 25; // -> description page
         break;
     case 25:
         DexScreen_DrawMonDexPage(FALSE);
@@ -1864,6 +2260,54 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
     case 26:
         DexScreen_DestroyAreaScreenResources();
         sPokedexScreenData->state = 18;
+        break;
+    case 27:
+        DexScreen_DrawMonLearnsetPage();
+        sPokedexScreenData->state = 28;
+        break;
+    case 28:
+        CopyBgTilemapBufferToVram(3);
+        CopyBgTilemapBufferToVram(2);
+        CopyBgTilemapBufferToVram(1);
+        CopyBgTilemapBufferToVram(0);
+        sPokedexScreenData->state = 29;
+        break;
+    case 29: // Learnset-page input loop, shared by both the LEARNSET and TM/HM columns
+        switch (DexScreen_LearnsetPageHandleInput())
+        {
+        case DEX_LEARNSET_INPUT_NEXT:
+            if (sDexLearnsetPage->shownColumn == DEX_LEARNSET_COL_LEVELUP)
+            {
+                DexScreen_SwitchLearnsetPageColumn(DEX_LEARNSET_COL_TMHM);
+                sPokedexScreenData->state = 30;
+            }
+            else // -> AREA page
+            {
+                DexScreen_DestroyLearnsetPageResources();
+                FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+                CopyBgTilemapBufferToVram(1);
+                sPokedexScreenData->state = 21;
+            }
+            break;
+        case DEX_LEARNSET_INPUT_BACK:
+            if (sDexLearnsetPage->shownColumn == DEX_LEARNSET_COL_TMHM)
+            {
+                DexScreen_SwitchLearnsetPageColumn(DEX_LEARNSET_COL_LEVELUP);
+                sPokedexScreenData->state = 30;
+            }
+            else // -> description page
+            {
+                DexScreen_DestroyLearnsetPageResources();
+                FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+                CopyBgTilemapBufferToVram(1);
+                sPokedexScreenData->state = 25;
+            }
+            break;
+        }
+        break;
+    case 30: // Push the just-switched learnset-page column's tilemap to VRAM
+        CopyBgTilemapBufferToVram(1);
+        sPokedexScreenData->state = 29;
         break;
     }
 }
@@ -1947,7 +2391,10 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
             RemoveDexPageWindows();
             FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
             CopyBgTilemapBufferToVram(1);
-            sPokedexScreenData->state = 7;
+            if (DexScreen_GetSetPokedexFlag(sPokedexScreenData->dexSpecies, FLAG_GET_CAUGHT, TRUE))
+                sPokedexScreenData->state = 13; // -> learnset page (caught only)
+            else
+                sPokedexScreenData->state = 7; // -> AREA page
         }
         else if (JOY_NEW(B_BUTTON))
         {
@@ -2012,7 +2459,10 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
         break;
     case 10:
         DexScreen_DestroyAreaScreenResources();
-        sPokedexScreenData->state = 11;
+        if (DexScreen_GetSetPokedexFlag(sPokedexScreenData->dexSpecies, FLAG_GET_CAUGHT, TRUE))
+            sPokedexScreenData->state = 13; // -> learnset page (caught only)
+        else
+            sPokedexScreenData->state = 11; // -> description page
         break;
     case 11:
         DexScreen_DrawMonDexPage(FALSE);
@@ -2027,6 +2477,54 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
         FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 2, 30, 16);
         CopyBgTilemapBufferToVram(0);
         sPokedexScreenData->state = 1;
+        break;
+    case 13:
+        DexScreen_DrawMonLearnsetPage();
+        sPokedexScreenData->state = 14;
+        break;
+    case 14:
+        CopyBgTilemapBufferToVram(3);
+        CopyBgTilemapBufferToVram(2);
+        CopyBgTilemapBufferToVram(1);
+        CopyBgTilemapBufferToVram(0);
+        sPokedexScreenData->state = 15;
+        break;
+    case 15: // Learnset-page input loop, shared by both the LEARNSET and TM/HM columns
+        switch (DexScreen_LearnsetPageHandleInput())
+        {
+        case DEX_LEARNSET_INPUT_NEXT:
+            if (sDexLearnsetPage->shownColumn == DEX_LEARNSET_COL_LEVELUP)
+            {
+                DexScreen_SwitchLearnsetPageColumn(DEX_LEARNSET_COL_TMHM);
+                sPokedexScreenData->state = 16;
+            }
+            else // -> AREA page
+            {
+                DexScreen_DestroyLearnsetPageResources();
+                FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+                CopyBgTilemapBufferToVram(1);
+                sPokedexScreenData->state = 7;
+            }
+            break;
+        case DEX_LEARNSET_INPUT_BACK:
+            if (sDexLearnsetPage->shownColumn == DEX_LEARNSET_COL_TMHM)
+            {
+                DexScreen_SwitchLearnsetPageColumn(DEX_LEARNSET_COL_LEVELUP);
+                sPokedexScreenData->state = 16;
+            }
+            else // -> description page
+            {
+                DexScreen_DestroyLearnsetPageResources();
+                FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+                CopyBgTilemapBufferToVram(1);
+                sPokedexScreenData->state = 11;
+            }
+            break;
+        }
+        break;
+    case 16: // Push the just-switched learnset-page column's tilemap to VRAM
+        CopyBgTilemapBufferToVram(1);
+        sPokedexScreenData->state = 15;
         break;
     }
 }
@@ -2980,6 +3478,31 @@ u8 RemoveDexPageWindows(void)
     return 0;
 }
 
+/*
+ * Draws the plain content-area border (no internal divider) that fills rows
+ * 2-16 of the given background layer -- the same frame DexScreen_DrawMonAreaPage
+ * has always used. DexScreen_DrawMonLearnsetPage draws it on BG3 too, so the
+ * background looks the same behind that page no matter which page (the
+ * divided description-page frame, or nothing at all) was on BG3 before it.
+ */
+static void DexScreen_DrawContentFrame(u8 bg)
+{
+    u8 width = 28;
+    u8 height = 14;
+    s16 left = 0;
+    s16 top = 2;
+
+    FillBgTilemapBufferRect_Palette0(bg, 4, left, top, 1, 1);
+    FillBgTilemapBufferRect_Palette0(bg, BG_TILE_H_FLIP(4), left + 1 + width, top, 1, 1);
+    FillBgTilemapBufferRect_Palette0(bg, BG_TILE_V_FLIP(4), left, top + 1 + height, 1, 1);
+    FillBgTilemapBufferRect_Palette0(bg, BG_TILE_H_V_FLIP(4), left + 1 + width, top + 1 + height, 1, 1);
+    FillBgTilemapBufferRect_Palette0(bg, 5, left + 1, top, width, 1);
+    FillBgTilemapBufferRect_Palette0(bg, BG_TILE_V_FLIP(5), left + 1, top + 1 + height, width, 1);
+    FillBgTilemapBufferRect_Palette0(bg, 6, left, top + 1, 1, height);
+    FillBgTilemapBufferRect_Palette0(bg, BG_TILE_H_FLIP(6), left + 1 + width, top + 1, 1, height);
+    FillBgTilemapBufferRect_Palette0(bg, 1, left + 1, top + 1, width, height);
+}
+
 u8 DexScreen_DrawMonAreaPage(void)
 {
     int i;
@@ -2992,20 +3515,8 @@ u8 DexScreen_DrawMonAreaPage(void)
     species = sPokedexScreenData->dexSpecies;
     speciesId = SpeciesToNationalPokedexNum(species);
     monIsCaught = DexScreen_GetSetPokedexFlag(species, FLAG_GET_CAUGHT, TRUE);
-    width = 28;
-    height = 14;
-    left = 0;
-    top = 2;
 
-    FillBgTilemapBufferRect_Palette0(3, 4, left, top, 1, 1);
-    FillBgTilemapBufferRect_Palette0(3, BG_TILE_H_FLIP(4), left + 1 + width, top, 1, 1);
-    FillBgTilemapBufferRect_Palette0(3, BG_TILE_V_FLIP(4), left, top + 1 + height, 1, 1);
-    FillBgTilemapBufferRect_Palette0(3, BG_TILE_H_V_FLIP(4), left + 1 + width, top + 1 + height, 1, 1);
-    FillBgTilemapBufferRect_Palette0(3, 5, left + 1, top, width, 1);
-    FillBgTilemapBufferRect_Palette0(3, BG_TILE_V_FLIP(5), left + 1, top + 1 + height, width, 1);
-    FillBgTilemapBufferRect_Palette0(3, 6, left, top + 1, 1, height);
-    FillBgTilemapBufferRect_Palette0(3, BG_TILE_H_FLIP(6), left + 1 + width, top + 1, 1, height);
-    FillBgTilemapBufferRect_Palette0(3, 1, left + 1, top + 1, width, height);
+    DexScreen_DrawContentFrame(3);
     FillBgTilemapBufferRect_Palette0(0, 0, 0, 2, 30, 16);
 
     width = 10;

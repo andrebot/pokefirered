@@ -5726,6 +5726,28 @@ u32 CanMonLearnTMHM(struct Pokemon *mon, u8 tm)
     }
 }
 
+/*
+ * Returns a nonzero value if the given species can learn the TM or HM with the
+ * given machine index, or 0 if it cannot.
+ *
+ * tm is a zero-based machine index in the range
+ * [0, NUM_TECHNICAL_MACHINES + NUM_HIDDEN_MACHINES): indices 0..49 map to
+ * TM01..TM50 and indices 50..57 map to HM01..HM08, matching the bit ordering of
+ * sTMHMLearnsets and the entry ordering of sTMHMMoves.
+ *
+ * Unlike CanMonLearnTMHM this takes a bare species id rather than a live
+ * struct Pokemon, so it can be queried for a species the player does not own
+ * (for example from the Pokedex). It performs no SPECIES_EGG handling; code that
+ * works with real Pokemon should keep using CanMonLearnTMHM.
+ */
+u32 CanSpeciesLearnTMHM(u16 species, u8 tm)
+{
+    if (tm < 32)
+        return sTMHMLearnsets[species][0] & (1 << tm);
+    else
+        return sTMHMLearnsets[species][1] & (1 << (tm - 32));
+}
+
 u8 GetMoveRelearnerMoves(struct Pokemon *mon, u16 *moves)
 {
     u16 learnedMoves[MAX_MON_MOVES];
