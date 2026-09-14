@@ -2595,12 +2595,12 @@ static void PrintSkillsPage(void)
     else if (sMonSummaryScreen->skillsPageView == SKILLS_VIEW_IVS)
     {
         PrintSkillsGeneColumn(win, sMonSkillsPrinterXpos->ivStr, sMonSummaryScreen->summary.ivValueStrBufs);
-        AddTextPrinterParameterized3(win, FONT_SMALL, 2, 3, sLevelNickTextColors[0], TEXT_SKIP_DRAW, gText_PokeSum_IVLabel);
+        AddTextPrinterParameterized3(win, FONT_SMALL, 8, 3, sLevelNickTextColors[0], TEXT_SKIP_DRAW, gText_PokeSum_IVLabel);
     }
     else // SKILLS_VIEW_EVS
     {
         PrintSkillsGeneColumn(win, sMonSkillsPrinterXpos->evStr, sMonSummaryScreen->summary.evValueStrBufs);
-        AddTextPrinterParameterized3(win, FONT_SMALL, 2, 3, sLevelNickTextColors[0], TEXT_SKIP_DRAW, gText_PokeSum_EVLabel);
+        AddTextPrinterParameterized3(win, FONT_SMALL, 8, 3, sLevelNickTextColors[0], TEXT_SKIP_DRAW, gText_PokeSum_EVLabel);
     }
 
     // EXP points and next level are shown in every view (same positions)
