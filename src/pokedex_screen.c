@@ -99,6 +99,7 @@ struct PokedexCategoryPage
 struct DexLearnsetPageResources; // Defined near DexScreen_DrawMonLearnsetPage, below.
 struct DexEvolutionRow; // Defined near DexScreen_DrawMonEvolutionPage, below.
 struct DexEvolutionPageResources; // Defined near DexScreen_DrawMonEvolutionPage, below.
+struct DexEvolutionCellAnchor; // Defined near DexScreen_DrawMonEvolutionPage, below.
 
 EWRAM_DATA static struct PokedexScreenData * sPokedexScreenData = NULL;
 
@@ -166,14 +167,15 @@ static void DexScreen_FormatEvoMethod_Item(u8 *dest, u16 method, u16 item);
 static void DexScreen_FormatEvoMethod_Beauty(u8 *dest, u16 param);
 static void DexScreen_FormatEvoMethod(u8 *dest, u16 method, u16 param);
 static void DexScreen_DestroyEvolutionRowIcon(u8 slot);
-static void DexScreen_DrawOneEvolutionRow(u8 rowIndex, u8 slot);
+static void DexScreen_DrawEvolutionCell(u8 rowIndex, u8 iconSlot, const struct DexEvolutionCellAnchor *anchor);
+static void DexScreen_WrapMethodTextForGrid(u8 *method, u8 maxWidthPx);
+static void DexScreen_DrawEvolutionShowcase(void);
+static void DexScreen_DrawEvolutionGrid(void);
 static void DexScreen_DrawVisibleEvolutionRows(void);
-static u8 DexScreen_CreateEvolutionPageScrollArrows(void);
 static void DexScreen_EvolutionPage_PrintHeader(void);
 static void DexScreen_PrintNoEvolutionMessage(void);
 static void DexScreen_ShowEvolutionPageContent(void);
 static u8 DexScreen_DrawMonEvolutionPage(void);
-static void DexScreen_HandleEvolutionPageScrollInput(void);
 static u8 DexScreen_EvolutionPageHandleInput(void);
 static void DexScreen_DestroyEvolutionPageResources(void);
 static u32 DexScreen_GetDefaultPersonality(int species);
@@ -1978,12 +1980,15 @@ static void DexScreen_DestroyLearnsetPageResources(void)
 // --- Evolution page ----------------------------------------------------
 //
 // One page inserted between the TM/HM column and the AREA page, shown only
-// for caught species: lists every evolution the species has (up to
-// EVOS_PER_MON), each row showing the evolution method and the target
+// for caught species: shows every evolution the species has (up to
+// EVOS_PER_MON), each entry showing the evolution method and the target
 // species -- its real icon/name if the player has seen it, otherwise the
 // question-mark placeholder and gText_5Dashes. A species with no
 // evolutions still gets the page, with a centered "does not evolve"
-// message instead of any rows.
+// message instead. A single evolution gets a centered "showcase" layout;
+// 2+ evolutions get a DEX_EVOLUTION_GRID_COLUMNS-wide grid -- both always
+// show every evolution at once (EVOS_PER_MON caps at 5), so there's never
+// anything to scroll.
 //
 // Icons are drawn as ordinary mon-icon sprites (the same technique the
 // party menu uses to show several different species on screen at once),
@@ -1994,9 +1999,11 @@ static void DexScreen_DestroyLearnsetPageResources(void)
 
 extern const struct Evolution gEvolutionTable[][EVOS_PER_MON];
 
-#define DEX_EVOLUTION_ROWS_SHOWN 3
 // "Trade holding " (longest prefix) + an item name + EOS.
 #define DEX_EVOLUTION_METHOD_BUF_LEN (14 + ITEM_NAME_LENGTH + 1)
+
+// The grid layout (2+ evolutions) always fills row-major into this many columns.
+#define DEX_EVOLUTION_GRID_COLUMNS 2
 
 enum
 {
@@ -2027,12 +2034,10 @@ struct DexEvolutionRow
 struct DexEvolutionPageResources
 {
     struct DexEvolutionRow rows[EVOS_PER_MON];
-    u8 numRows;                                 // 0 -> "does not evolve" message instead of rows.
+    u8 numRows;                          // 0 -> "does not evolve" message instead of rows.
     u8 headerWindowId;
     u8 listWindowId;
-    u8 iconSpriteIds[DEX_EVOLUTION_ROWS_SHOWN]; // 0xFF where no icon sprite exists.
-    u16 scrollOffset;                           // Row index of the first visible row (u16: AddScrollIndicatorArrowPair needs a u16 *).
-    u8 scrollArrowsTaskId;                      // Only valid while numRows > 0.
+    u8 iconSpriteIds[EVOS_PER_MON];      // 0xFF where no icon sprite exists. All rows are drawn at once (grid/showcase), never scrolled.
 };
 
 EWRAM_DATA static struct DexEvolutionPageResources * sDexEvolutionPage = NULL;
@@ -2055,20 +2060,6 @@ static const struct WindowTemplate sWindowTemplate_EvolutionPage_List = {
     .height = 14,
     .paletteNum = 0,
     .baseBlock = 0x0044
-};
-
-static const struct ScrollArrowsTemplate sScrollArrowsTemplate_DexEvolution = {
-    .firstArrowType = 2,
-    .firstX = 216,
-    .firstY = 34,
-    .secondArrowType = 3,
-    .secondX = 216,
-    .secondY = 138,
-    .fullyUpThreshold = 0,
-    .fullyDownThreshold = 0,
-    .tileTag = 2002,
-    .palTag = 0xFFFF,
-    .palNum = 1,
 };
 
 // Maps every EVO_* method to its display family. EVO_FRIENDSHIP_DAY/NIGHT
@@ -2207,53 +2198,147 @@ static void DexScreen_DestroyEvolutionRowIcon(u8 slot)
     }
 }
 
+// Where to draw one evolution's icon + name + method text. iconX/iconY are
+// screen coords (CreateMonIcon's convention); the text coords are local to
+// the list window.
+struct DexEvolutionCellAnchor
+{
+    s16 iconX, iconY;
+    u8 nameX, nameY;
+    u8 methodX, methodY;
+};
+
 /*
- * Draws one evolution row (icon sprite + name + method text) into visible
- * slot `slot`, from sDexEvolutionPage->rows[rowIndex].
+ * Draws one evolution's icon sprite + name + method text at `anchor`,
+ * storing the icon sprite into iconSpriteIds[iconSlot].
  */
-static void DexScreen_DrawOneEvolutionRow(u8 rowIndex, u8 slot)
+static void DexScreen_DrawEvolutionCell(u8 rowIndex, u8 iconSlot, const struct DexEvolutionCellAnchor *anchor)
 {
     struct DexEvolutionRow *row = &sDexEvolutionPage->rows[rowIndex];
-    s16 y = 32 + slot * 32;
 
-    sDexEvolutionPage->iconSpriteIds[slot] = CreateMonIcon(row->iconSpecies, SpriteCB_MonIcon, 28, y, 0,
+    sDexEvolutionPage->iconSpriteIds[iconSlot] = CreateMonIcon(row->iconSpecies, SpriteCB_MonIcon, anchor->iconX, anchor->iconY, 0,
         DexScreen_GetDefaultPersonality(row->iconSpecies), FALSE);
-    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_NORMAL, row->name, 48, slot * 32 + 2, 0);
-    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_SMALL, row->method, 48, slot * 32 + 18, 0);
+    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_NORMAL, row->name, anchor->nameX, anchor->nameY, 0);
+    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_SMALL, row->method, anchor->methodX, anchor->methodY, 0);
 }
 
 /*
- * (Re)draws the up-to-DEX_EVOLUTION_ROWS_SHOWN rows starting at
- * sDexEvolutionPage->scrollOffset. Called once when the page is first
- * shown and again every time the scroll offset changes.
+ * If method is wider than maxWidthPx, breaks it onto a second line at the
+ * last space that still fits -- the grid layout's columns are narrower
+ * than the single-column layout's, so long method text (e.g. "Trade
+ * holding <item>") needs to wrap instead of overflowing into the next
+ * column.
+ */
+static void DexScreen_WrapMethodTextForGrid(u8 *method, u8 maxWidthPx)
+{
+    int i;
+    int lastSpace = -1;
+
+    if (GetStringWidth(FONT_SMALL, method, 0) <= maxWidthPx)
+        return;
+
+    for (i = 0; method[i] != EOS; i++)
+    {
+        if (method[i] == CHAR_SPACE)
+        {
+            u8 saved = method[i];
+            method[i] = EOS;
+            if (GetStringWidth(FONT_SMALL, method, 0) <= maxWidthPx)
+                lastSpace = i;
+            method[i] = saved;
+        }
+    }
+
+    if (lastSpace >= 0)
+        method[lastSpace] = CHAR_NEWLINE;
+}
+
+// The showcase block (icon on top, name below it, method below that) is
+// vertically centered as a group in the 112px-tall list window.
+#define DEX_EVOLUTION_SHOWCASE_ICON_CENTER_X    120
+#define DEX_EVOLUTION_SHOWCASE_BLOCK_TOP         24
+#define DEX_EVOLUTION_SHOWCASE_ICON_HALF_HEIGHT  16
+#define DEX_EVOLUTION_SHOWCASE_NAME_OFFSET       36
+#define DEX_EVOLUTION_SHOWCASE_METHOD_OFFSET     52
+
+/*
+ * Draws the single-evolution "showcase" layout: icon centered on top,
+ * name centered below it, method text centered below that.
+ */
+static void DexScreen_DrawEvolutionShowcase(void)
+{
+    struct DexEvolutionRow *row = &sDexEvolutionPage->rows[0];
+    struct DexEvolutionCellAnchor anchor;
+
+    anchor.iconX = DEX_EVOLUTION_SHOWCASE_ICON_CENTER_X;
+    anchor.iconY = 32 + DEX_EVOLUTION_SHOWCASE_BLOCK_TOP + DEX_EVOLUTION_SHOWCASE_ICON_HALF_HEIGHT;
+    anchor.nameY = DEX_EVOLUTION_SHOWCASE_BLOCK_TOP + DEX_EVOLUTION_SHOWCASE_NAME_OFFSET;
+    anchor.methodY = DEX_EVOLUTION_SHOWCASE_BLOCK_TOP + DEX_EVOLUTION_SHOWCASE_METHOD_OFFSET;
+    anchor.nameX = (sWindowTemplate_EvolutionPage_List.width * 8 - GetStringWidth(FONT_NORMAL, row->name, 0)) / 2;
+    anchor.methodX = (sWindowTemplate_EvolutionPage_List.width * 8 - GetStringWidth(FONT_SMALL, row->method, 0)) / 2;
+
+    DexScreen_DrawEvolutionCell(0, 0, &anchor);
+}
+
+// The grid reuses the old single-column layout's 32px-tall row pitch and
+// icon/text horizontal offsets, just row-major across
+// DEX_EVOLUTION_GRID_COLUMNS columns instead of one scrolling column.
+#define DEX_EVOLUTION_GRID_COLUMN_WIDTH    112
+#define DEX_EVOLUTION_GRID_ROW_HEIGHT       32
+#define DEX_EVOLUTION_GRID_ICON_X           28
+#define DEX_EVOLUTION_GRID_TEXT_X           48
+#define DEX_EVOLUTION_GRID_TEXT_MAX_WIDTH   80
+
+/*
+ * Draws the 2+ evolution grid layout: DEX_EVOLUTION_GRID_COLUMNS columns,
+ * filled row-major, vertically centered as a block so species with fewer
+ * evolutions than a full grid (e.g. 2) don't hug the top of the window.
+ */
+static void DexScreen_DrawEvolutionGrid(void)
+{
+    u8 rows = (sDexEvolutionPage->numRows + DEX_EVOLUTION_GRID_COLUMNS - 1) / DEX_EVOLUTION_GRID_COLUMNS;
+    u8 blockTop = (sWindowTemplate_EvolutionPage_List.height * 8 - rows * DEX_EVOLUTION_GRID_ROW_HEIGHT) / 2;
+    u8 i;
+
+    for (i = 0; i < sDexEvolutionPage->numRows; i++)
+    {
+        u8 col = i % DEX_EVOLUTION_GRID_COLUMNS;
+        u8 slotTop = blockTop + (i / DEX_EVOLUTION_GRID_COLUMNS) * DEX_EVOLUTION_GRID_ROW_HEIGHT;
+        struct DexEvolutionCellAnchor anchor;
+
+        DexScreen_WrapMethodTextForGrid(sDexEvolutionPage->rows[i].method, DEX_EVOLUTION_GRID_TEXT_MAX_WIDTH);
+
+        anchor.iconX = DEX_EVOLUTION_GRID_ICON_X + col * DEX_EVOLUTION_GRID_COLUMN_WIDTH;
+        anchor.iconY = 32 + slotTop;
+        anchor.nameX = DEX_EVOLUTION_GRID_TEXT_X + col * DEX_EVOLUTION_GRID_COLUMN_WIDTH;
+        anchor.nameY = slotTop + 2;
+        anchor.methodX = anchor.nameX;
+        anchor.methodY = slotTop + 18;
+
+        DexScreen_DrawEvolutionCell(i, i, &anchor);
+    }
+}
+
+/*
+ * (Re)draws every evolution row. Everything is always fully visible --
+ * EVOS_PER_MON caps a species at 5 evolutions, which the showcase (1) and
+ * grid (2-5) layouts always fit without scrolling.
  */
 static void DexScreen_DrawVisibleEvolutionRows(void)
 {
     int i;
 
     FillWindowPixelBuffer(sDexEvolutionPage->listWindowId, PIXEL_FILL(0));
-    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN; i++)
+    for (i = 0; i < EVOS_PER_MON; i++)
         DexScreen_DestroyEvolutionRowIcon(i);
-    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN && sDexEvolutionPage->scrollOffset + i < sDexEvolutionPage->numRows; i++)
-        DexScreen_DrawOneEvolutionRow(sDexEvolutionPage->scrollOffset + i, i);
+
+    if (sDexEvolutionPage->numRows == 1)
+        DexScreen_DrawEvolutionShowcase();
+    else
+        DexScreen_DrawEvolutionGrid();
 
     PutWindowTilemap(sDexEvolutionPage->listWindowId);
     CopyWindowToVram(sDexEvolutionPage->listWindowId, COPYWIN_GFX);
-}
-
-/*
- * Creates the scroll-indicator arrow pair for the row list, sized to how
- * far it can actually scroll (0 if all rows already fit on screen).
- */
-static u8 DexScreen_CreateEvolutionPageScrollArrows(void)
-{
-    struct ScrollArrowsTemplate template = sScrollArrowsTemplate_DexEvolution;
-
-    if (sDexEvolutionPage->numRows > DEX_EVOLUTION_ROWS_SHOWN)
-        template.fullyDownThreshold = sDexEvolutionPage->numRows - DEX_EVOLUTION_ROWS_SHOWN;
-    else
-        template.fullyDownThreshold = 0;
-    return AddScrollIndicatorArrowPair(&template, &sDexEvolutionPage->scrollOffset);
 }
 
 /*
@@ -2287,8 +2372,7 @@ static void DexScreen_PrintNoEvolutionMessage(void)
 
 /*
  * Draws the header, the row list (or the "does not evolve" message if
- * there are no rows), the scroll arrows (if any rows exist), and the
- * control-hint bar.
+ * there are no rows), and the control-hint bar.
  */
 static void DexScreen_ShowEvolutionPageContent(void)
 {
@@ -2299,10 +2383,7 @@ static void DexScreen_ShowEvolutionPageContent(void)
     if (sDexEvolutionPage->numRows == 0)
         DexScreen_PrintNoEvolutionMessage();
     else
-    {
         DexScreen_DrawVisibleEvolutionRows();
-        sDexEvolutionPage->scrollArrowsTaskId = DexScreen_CreateEvolutionPageScrollArrows();
-    }
 
     FillWindowPixelBuffer(1, PIXEL_FILL(15));
     DexScreen_AddTextPrinterParameterized(1, FONT_SMALL, gText_Cry, 8, 2, 4);
@@ -2325,8 +2406,7 @@ static u8 DexScreen_DrawMonEvolutionPage(void)
     if (sDexEvolutionPage == NULL)
         return 0;
 
-    sDexEvolutionPage->scrollOffset = 0;
-    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN; i++)
+    for (i = 0; i < EVOS_PER_MON; i++)
         sDexEvolutionPage->iconSpriteIds[i] = 0xFF;
 
     // Always repaint BG3 with the plain content frame -- see
@@ -2341,35 +2421,12 @@ static u8 DexScreen_DrawMonEvolutionPage(void)
 }
 
 /*
- * Handles Up/Down for the row list: moves the scroll offset by one row and
- * redraws the visible rows when it changes.
- */
-static void DexScreen_HandleEvolutionPageScrollInput(void)
-{
-    u16 maxOffset = sDexEvolutionPage->numRows - DEX_EVOLUTION_ROWS_SHOWN;
-
-    if (JOY_REPT(DPAD_UP) && sDexEvolutionPage->scrollOffset > 0)
-    {
-        sDexEvolutionPage->scrollOffset--;
-        DexScreen_DrawVisibleEvolutionRows();
-    }
-    else if (JOY_REPT(DPAD_DOWN) && sDexEvolutionPage->scrollOffset < maxOffset)
-    {
-        sDexEvolutionPage->scrollOffset++;
-        DexScreen_DrawVisibleEvolutionRows();
-    }
-}
-
-/*
- * Per-frame input for the evolution page: Up/Down scrolls the row list (if
- * it has more rows than fit on screen at once), A advances to the AREA
- * page, B retreats to the TM/HM column.
+ * Per-frame input for the evolution page: A advances to the AREA page, B
+ * retreats to the TM/HM column. The showcase/grid layouts always show
+ * every row at once, so there's nothing left to scroll.
  */
 static u8 DexScreen_EvolutionPageHandleInput(void)
 {
-    if (sDexEvolutionPage->numRows > DEX_EVOLUTION_ROWS_SHOWN)
-        DexScreen_HandleEvolutionPageScrollInput();
-
     if (JOY_NEW(A_BUTTON))
         return DEX_EVOLUTION_INPUT_NEXT;
     if (JOY_NEW(B_BUTTON))
@@ -2379,17 +2436,15 @@ static u8 DexScreen_EvolutionPageHandleInput(void)
 }
 
 /*
- * Leaves the evolution page: destroys any row icon sprites, the
- * scroll-arrow pair (if the page had rows), both windows, frees the
- * mon-icon palettes loaded for this page, and frees sDexEvolutionPage.
+ * Leaves the evolution page: destroys any row icon sprites, both windows,
+ * frees the mon-icon palettes loaded for this page, and frees
+ * sDexEvolutionPage.
  */
 static void DexScreen_DestroyEvolutionPageResources(void)
 {
     int i;
 
-    if (sDexEvolutionPage->numRows > 0)
-        RemoveScrollIndicatorArrowPair(sDexEvolutionPage->scrollArrowsTaskId);
-    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN; i++)
+    for (i = 0; i < EVOS_PER_MON; i++)
         DexScreen_DestroyEvolutionRowIcon(i);
 
     FreeMonIconPalettes();
