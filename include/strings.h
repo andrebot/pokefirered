@@ -1010,6 +1010,13 @@ extern const u8 gText_DexTmHm[];
 extern const u8 gText_NextDataPreviousData[];
 extern const u8 gText_TM[];
 extern const u8 gText_HM[];
+extern const u8 gText_DexEvolution[];
+extern const u8 gText_DexNoEvolutions[];
+extern const u8 gText_EvoUseItem[];
+extern const u8 gText_EvoTradeHolding[];
+extern const u8 gText_EvoFriendship[];
+extern const u8 gText_EvoTrade[];
+extern const u8 gText_EvoBeauty[];
 
 // daycare
 extern const u8 gText_Lv[];

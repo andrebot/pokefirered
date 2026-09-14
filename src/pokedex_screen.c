@@ -23,6 +23,8 @@
 #include "party_menu.h"
 #include "constants/items.h"
 #include "constants/moves.h"
+#include "item.h"
+#include "pokemon_icon.h"
 
 #define TAG_AREA_MARKERS 2001
 
@@ -95,6 +97,8 @@ struct PokedexCategoryPage
 };
 
 struct DexLearnsetPageResources; // Defined near DexScreen_DrawMonLearnsetPage, below.
+struct DexEvolutionRow; // Defined near DexScreen_DrawMonEvolutionPage, below.
+struct DexEvolutionPageResources; // Defined near DexScreen_DrawMonEvolutionPage, below.
 
 EWRAM_DATA static struct PokedexScreenData * sPokedexScreenData = NULL;
 
@@ -152,9 +156,27 @@ static void DexScreen_LearnsetPage_PrintHeader(u8 column);
 static u8 DexScreen_ShowLearnsetColumnPage(u8 column);
 static void DexScreen_HideLearnsetColumnPage(void);
 static u8 DexScreen_SwitchLearnsetPageColumn(u8 newColumn);
-static u8 DexScreen_DrawMonLearnsetPage(void);
+static u8 DexScreen_DrawMonLearnsetPage(u8 startColumn);
 static u8 DexScreen_LearnsetPageHandleInput(void);
 static void DexScreen_DestroyLearnsetPageResources(void);
+static void DexScreen_BuildEvolutionRow(const struct Evolution *evo, struct DexEvolutionRow *row);
+static void DexScreen_BuildEvolutionRows(u16 species, struct DexEvolutionPageResources *res);
+static void DexScreen_FormatEvoMethod_Level(u8 *dest, u16 param);
+static void DexScreen_FormatEvoMethod_Item(u8 *dest, u16 method, u16 item);
+static void DexScreen_FormatEvoMethod_Beauty(u8 *dest, u16 param);
+static void DexScreen_FormatEvoMethod(u8 *dest, u16 method, u16 param);
+static void DexScreen_DestroyEvolutionRowIcon(u8 slot);
+static void DexScreen_DrawOneEvolutionRow(u8 rowIndex, u8 slot);
+static void DexScreen_DrawVisibleEvolutionRows(void);
+static u8 DexScreen_CreateEvolutionPageScrollArrows(void);
+static void DexScreen_EvolutionPage_PrintHeader(void);
+static void DexScreen_PrintNoEvolutionMessage(void);
+static void DexScreen_ShowEvolutionPageContent(void);
+static u8 DexScreen_DrawMonEvolutionPage(void);
+static void DexScreen_HandleEvolutionPageScrollInput(void);
+static u8 DexScreen_EvolutionPageHandleInput(void);
+static void DexScreen_DestroyEvolutionPageResources(void);
+static u32 DexScreen_GetDefaultPersonality(int species);
 
 #include "data/pokemon_graphics/footprint_table.h"
 
@@ -1892,14 +1914,15 @@ static u8 DexScreen_SwitchLearnsetPageColumn(u8 newColumn)
 }
 
 /*
- * Renders the level-up learnset page for the species currently shown
+ * Renders the learnset page for the species currently shown
  * (sPokedexScreenData->dexSpecies): builds both the level-up and TM/HM
- * columns' move lists (the TM/HM page reuses this same data when the player
- * advances to it -- see DexScreen_SwitchLearnsetPageColumn) and shows the
- * level-up column first. The caller is responsible for only reaching this
- * page for a caught species.
+ * columns' move lists (so switching column never re-scans the move data)
+ * and shows `startColumn` first -- DEX_LEARNSET_COL_LEVELUP when entering
+ * from the description page, DEX_LEARNSET_COL_TMHM when re-entering from
+ * the evolution page's B button. The caller is responsible for only
+ * reaching this page for a caught species.
  */
-static u8 DexScreen_DrawMonLearnsetPage(void)
+static u8 DexScreen_DrawMonLearnsetPage(u8 startColumn)
 {
     u16 species = sPokedexScreenData->dexSpecies;
 
@@ -1916,7 +1939,7 @@ static u8 DexScreen_DrawMonLearnsetPage(void)
     DexScreen_BuildLevelUpColumn(species, sDexLearnsetPage);
     DexScreen_BuildTmHmColumn(species, sDexLearnsetPage);
 
-    return DexScreen_ShowLearnsetColumnPage(DEX_LEARNSET_COL_LEVELUP);
+    return DexScreen_ShowLearnsetColumnPage(startColumn);
 }
 
 /*
@@ -1951,6 +1974,433 @@ static void DexScreen_DestroyLearnsetPageResources(void)
 }
 
 // --- End learnset / TM-HM page ----------------------------------------------
+
+// --- Evolution page ----------------------------------------------------
+//
+// One page inserted between the TM/HM column and the AREA page, shown only
+// for caught species: lists every evolution the species has (up to
+// EVOS_PER_MON), each row showing the evolution method and the target
+// species -- its real icon/name if the player has seen it, otherwise the
+// question-mark placeholder and gText_5Dashes. A species with no
+// evolutions still gets the page, with a centered "does not evolve"
+// message instead of any rows.
+//
+// Icons are drawn as ordinary mon-icon sprites (the same technique the
+// party menu uses to show several different species on screen at once),
+// not the single-BG-palette-slot window-blit technique
+// DexScreen_DrawMonAreaPage uses for its lone icon -- that technique can't
+// show more than one species' colors correctly at a time, which this page
+// sometimes needs to (e.g. Eevee).
+
+extern const struct Evolution gEvolutionTable[][EVOS_PER_MON];
+
+#define DEX_EVOLUTION_ROWS_SHOWN 3
+// "Trade holding " (longest prefix) + an item name + EOS.
+#define DEX_EVOLUTION_METHOD_BUF_LEN (14 + ITEM_NAME_LENGTH + 1)
+
+enum
+{
+    DEX_EVOLUTION_INPUT_NONE,
+    DEX_EVOLUTION_INPUT_NEXT, // A: advance (evolution -> AREA)
+    DEX_EVOLUTION_INPUT_BACK, // B: retreat (evolution -> TM/HM column)
+};
+
+// Which family of display text an EVO_* method needs -- keeps
+// DexScreen_FormatEvoMethod a small dispatch over 5 families instead of a
+// 15-way switch over every individual EVO_* constant.
+enum
+{
+    EVO_FAMILY_LEVEL,
+    EVO_FAMILY_ITEM,
+    EVO_FAMILY_FRIENDSHIP,
+    EVO_FAMILY_TRADE,
+    EVO_FAMILY_BEAUTY,
+};
+
+struct DexEvolutionRow
+{
+    u16 iconSpecies;   // Real target species, or SPECIES_NONE for the question-mark placeholder.
+    const u8 *name;    // gSpeciesNames[target], or gText_5Dashes if not seen.
+    u8 method[DEX_EVOLUTION_METHOD_BUF_LEN]; // e.g. "Lv. 16", "Use MOON STONE".
+};
+
+struct DexEvolutionPageResources
+{
+    struct DexEvolutionRow rows[EVOS_PER_MON];
+    u8 numRows;                                 // 0 -> "does not evolve" message instead of rows.
+    u8 headerWindowId;
+    u8 listWindowId;
+    u8 iconSpriteIds[DEX_EVOLUTION_ROWS_SHOWN]; // 0xFF where no icon sprite exists.
+    u16 scrollOffset;                           // Row index of the first visible row (u16: AddScrollIndicatorArrowPair needs a u16 *).
+    u8 scrollArrowsTaskId;                      // Only valid while numRows > 0.
+};
+
+EWRAM_DATA static struct DexEvolutionPageResources * sDexEvolutionPage = NULL;
+
+static const struct WindowTemplate sWindowTemplate_EvolutionPage_Header = {
+    .bg = 1,
+    .tilemapLeft = 0,
+    .tilemapTop = 2,
+    .width = 30,
+    .height = 2,
+    .paletteNum = 0,
+    .baseBlock = 0x0008
+};
+
+static const struct WindowTemplate sWindowTemplate_EvolutionPage_List = {
+    .bg = 1,
+    .tilemapLeft = 1,
+    .tilemapTop = 4,
+    .width = 28,
+    .height = 14,
+    .paletteNum = 0,
+    .baseBlock = 0x0044
+};
+
+static const struct ScrollArrowsTemplate sScrollArrowsTemplate_DexEvolution = {
+    .firstArrowType = 2,
+    .firstX = 216,
+    .firstY = 34,
+    .secondArrowType = 3,
+    .secondX = 216,
+    .secondY = 138,
+    .fullyUpThreshold = 0,
+    .fullyDownThreshold = 0,
+    .tileTag = 2002,
+    .palTag = 0xFFFF,
+    .palNum = 1,
+};
+
+// Maps every EVO_* method to its display family. EVO_FRIENDSHIP_DAY/NIGHT
+// fold into EVO_FAMILY_FRIENDSHIP like plain EVO_FRIENDSHIP: FR/LG has no
+// RTC and time-of-day evolution is compiled out (see pokemon.c's
+// GetEvolutionTargetSpecies), but the raw method value is not dead data --
+// gEvolutionTable[SPECIES_EEVEE] genuinely stores EVO_FRIENDSHIP_DAY for
+// Espeon and EVO_FRIENDSHIP_NIGHT for Umbreon, so this page must still
+// display them.
+static const u8 sEvoMethodFamilies[EVO_BEAUTY + 1] = {
+    [EVO_FRIENDSHIP]       = EVO_FAMILY_FRIENDSHIP,
+    [EVO_FRIENDSHIP_DAY]   = EVO_FAMILY_FRIENDSHIP,
+    [EVO_FRIENDSHIP_NIGHT] = EVO_FAMILY_FRIENDSHIP,
+    [EVO_LEVEL]            = EVO_FAMILY_LEVEL,
+    [EVO_TRADE]            = EVO_FAMILY_TRADE,
+    [EVO_TRADE_ITEM]       = EVO_FAMILY_ITEM,
+    [EVO_ITEM]             = EVO_FAMILY_ITEM,
+    [EVO_LEVEL_ATK_GT_DEF] = EVO_FAMILY_LEVEL,
+    [EVO_LEVEL_ATK_EQ_DEF] = EVO_FAMILY_LEVEL,
+    [EVO_LEVEL_ATK_LT_DEF] = EVO_FAMILY_LEVEL,
+    [EVO_LEVEL_SILCOON]    = EVO_FAMILY_LEVEL,
+    [EVO_LEVEL_CASCOON]    = EVO_FAMILY_LEVEL,
+    [EVO_LEVEL_NINJASK]    = EVO_FAMILY_LEVEL,
+    [EVO_LEVEL_SHEDINJA]   = EVO_FAMILY_LEVEL,
+    [EVO_BEAUTY]           = EVO_FAMILY_BEAUTY,
+};
+
+/*
+ * Formats "Lv. <n>" into dest, for a level-based evolution (EVO_LEVEL and
+ * the personality/stat-comparison special cases, which all still just
+ * gate on a level).
+ */
+static void DexScreen_FormatEvoMethod_Level(u8 *dest, u16 param)
+{
+    u8 *end = StringCopy(dest, gText_Level);
+    ConvertIntToDecimalStringN(end, param, STR_CONV_MODE_LEFT_ALIGN, 3);
+}
+
+/*
+ * Formats "Use <item>" (EVO_ITEM) or "Trade holding <item>"
+ * (EVO_TRADE_ITEM) into dest.
+ */
+static void DexScreen_FormatEvoMethod_Item(u8 *dest, u16 method, u16 item)
+{
+    u8 *end = StringCopy(dest, (method == EVO_TRADE_ITEM) ? gText_EvoTradeHolding : gText_EvoUseItem);
+    StringCopy(end, ItemId_GetName(item));
+}
+
+/*
+ * Formats "Beauty <n>" (EVO_BEAUTY, e.g. Feebas) into dest.
+ */
+static void DexScreen_FormatEvoMethod_Beauty(u8 *dest, u16 param)
+{
+    u8 *end = StringCopy(dest, gText_EvoBeauty);
+    ConvertIntToDecimalStringN(end, param, STR_CONV_MODE_LEFT_ALIGN, 3);
+}
+
+/*
+ * Formats the display text for one evolution row's method. Method IDs are
+ * first bucketed into a small family (see sEvoMethodFamilies) so this
+ * stays a 5-way switch instead of a 15-way one -- see the per-family
+ * formatter functions above for the actual text construction.
+ */
+static void DexScreen_FormatEvoMethod(u8 *dest, u16 method, u16 param)
+{
+    switch (sEvoMethodFamilies[method])
+    {
+    case EVO_FAMILY_LEVEL:
+        DexScreen_FormatEvoMethod_Level(dest, param);
+        break;
+    case EVO_FAMILY_ITEM:
+        DexScreen_FormatEvoMethod_Item(dest, method, param);
+        break;
+    case EVO_FAMILY_FRIENDSHIP:
+        StringCopy(dest, gText_EvoFriendship);
+        break;
+    case EVO_FAMILY_TRADE:
+        StringCopy(dest, gText_EvoTrade);
+        break;
+    case EVO_FAMILY_BEAUTY:
+        DexScreen_FormatEvoMethod_Beauty(dest, param);
+        break;
+    }
+}
+
+/*
+ * Builds one evolution-page row from a single gEvolutionTable entry: looks
+ * up whether the target has been seen (DexScreen_GetSetPokedexFlag with
+ * FLAG_GET_SEEN; caught implies seen) to decide between its real icon/name
+ * or the not-seen placeholders, and formats the method text.
+ */
+static void DexScreen_BuildEvolutionRow(const struct Evolution *evo, struct DexEvolutionRow *row)
+{
+    if (DexScreen_GetSetPokedexFlag(evo->targetSpecies, FLAG_GET_SEEN, TRUE))
+    {
+        row->iconSpecies = evo->targetSpecies;
+        row->name = gSpeciesNames[evo->targetSpecies];
+    }
+    else
+    {
+        row->iconSpecies = SPECIES_NONE;
+        row->name = gText_5Dashes;
+    }
+    DexScreen_FormatEvoMethod(row->method, evo->method, evo->param);
+}
+
+/*
+ * Fills res's rows from gEvolutionTable[species], skipping unused (method
+ * == 0) slots. Writes the row count to res->numRows -- zero means the
+ * species does not evolve, which the caller displays as such.
+ */
+static void DexScreen_BuildEvolutionRows(u16 species, struct DexEvolutionPageResources *res)
+{
+    int i;
+    u8 count = 0;
+
+    for (i = 0; i < EVOS_PER_MON; i++)
+    {
+        if (gEvolutionTable[species][i].method == 0)
+            continue;
+        DexScreen_BuildEvolutionRow(&gEvolutionTable[species][i], &res->rows[count]);
+        count++;
+    }
+    res->numRows = count;
+}
+
+/*
+ * Destroys the row-icon sprite in the given visible-row slot, if any.
+ */
+static void DexScreen_DestroyEvolutionRowIcon(u8 slot)
+{
+    if (sDexEvolutionPage->iconSpriteIds[slot] != 0xFF)
+    {
+        DestroyMonIcon(&gSprites[sDexEvolutionPage->iconSpriteIds[slot]]);
+        sDexEvolutionPage->iconSpriteIds[slot] = 0xFF;
+    }
+}
+
+/*
+ * Draws one evolution row (icon sprite + name + method text) into visible
+ * slot `slot`, from sDexEvolutionPage->rows[rowIndex].
+ */
+static void DexScreen_DrawOneEvolutionRow(u8 rowIndex, u8 slot)
+{
+    struct DexEvolutionRow *row = &sDexEvolutionPage->rows[rowIndex];
+    s16 y = 32 + slot * 32;
+
+    sDexEvolutionPage->iconSpriteIds[slot] = CreateMonIcon(row->iconSpecies, SpriteCB_MonIcon, 28, y, 0,
+        DexScreen_GetDefaultPersonality(row->iconSpecies), FALSE);
+    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_NORMAL, row->name, 48, slot * 32 + 2, 0);
+    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_SMALL, row->method, 48, slot * 32 + 18, 0);
+}
+
+/*
+ * (Re)draws the up-to-DEX_EVOLUTION_ROWS_SHOWN rows starting at
+ * sDexEvolutionPage->scrollOffset. Called once when the page is first
+ * shown and again every time the scroll offset changes.
+ */
+static void DexScreen_DrawVisibleEvolutionRows(void)
+{
+    int i;
+
+    FillWindowPixelBuffer(sDexEvolutionPage->listWindowId, PIXEL_FILL(0));
+    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN; i++)
+        DexScreen_DestroyEvolutionRowIcon(i);
+    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN && sDexEvolutionPage->scrollOffset + i < sDexEvolutionPage->numRows; i++)
+        DexScreen_DrawOneEvolutionRow(sDexEvolutionPage->scrollOffset + i, i);
+
+    PutWindowTilemap(sDexEvolutionPage->listWindowId);
+    CopyWindowToVram(sDexEvolutionPage->listWindowId, COPYWIN_GFX);
+}
+
+/*
+ * Creates the scroll-indicator arrow pair for the row list, sized to how
+ * far it can actually scroll (0 if all rows already fit on screen).
+ */
+static u8 DexScreen_CreateEvolutionPageScrollArrows(void)
+{
+    struct ScrollArrowsTemplate template = sScrollArrowsTemplate_DexEvolution;
+
+    if (sDexEvolutionPage->numRows > DEX_EVOLUTION_ROWS_SHOWN)
+        template.fullyDownThreshold = sDexEvolutionPage->numRows - DEX_EVOLUTION_ROWS_SHOWN;
+    else
+        template.fullyDownThreshold = 0;
+    return AddScrollIndicatorArrowPair(&template, &sDexEvolutionPage->scrollOffset);
+}
+
+/*
+ * Prints the "EVOLUTION" title, centered in the header window.
+ */
+static void DexScreen_EvolutionPage_PrintHeader(void)
+{
+    s32 strWidth = GetStringWidth(FONT_SMALL, gText_DexEvolution, 0);
+
+    FillWindowPixelBuffer(sDexEvolutionPage->headerWindowId, PIXEL_FILL(0));
+    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->headerWindowId, FONT_SMALL, gText_DexEvolution,
+        (sWindowTemplate_EvolutionPage_Header.width * 8 - strWidth) / 2, 2, 0);
+    PutWindowTilemap(sDexEvolutionPage->headerWindowId);
+    CopyWindowToVram(sDexEvolutionPage->headerWindowId, COPYWIN_GFX);
+}
+
+/*
+ * Prints a centered "Does not evolve" message in the row-list window, for
+ * a species with no evolutions at all.
+ */
+static void DexScreen_PrintNoEvolutionMessage(void)
+{
+    s32 strWidth = GetStringWidth(FONT_NORMAL, gText_DexNoEvolutions, 0);
+
+    FillWindowPixelBuffer(sDexEvolutionPage->listWindowId, PIXEL_FILL(0));
+    DexScreen_AddTextPrinterParameterized(sDexEvolutionPage->listWindowId, FONT_NORMAL, gText_DexNoEvolutions,
+        (sWindowTemplate_EvolutionPage_List.width * 8 - strWidth) / 2, 48, 0);
+    PutWindowTilemap(sDexEvolutionPage->listWindowId);
+    CopyWindowToVram(sDexEvolutionPage->listWindowId, COPYWIN_GFX);
+}
+
+/*
+ * Draws the header, the row list (or the "does not evolve" message if
+ * there are no rows), the scroll arrows (if any rows exist), and the
+ * control-hint bar.
+ */
+static void DexScreen_ShowEvolutionPageContent(void)
+{
+    sDexEvolutionPage->headerWindowId = AddWindow(&sWindowTemplate_EvolutionPage_Header);
+    sDexEvolutionPage->listWindowId = AddWindow(&sWindowTemplate_EvolutionPage_List);
+    DexScreen_EvolutionPage_PrintHeader();
+
+    if (sDexEvolutionPage->numRows == 0)
+        DexScreen_PrintNoEvolutionMessage();
+    else
+    {
+        DexScreen_DrawVisibleEvolutionRows();
+        sDexEvolutionPage->scrollArrowsTaskId = DexScreen_CreateEvolutionPageScrollArrows();
+    }
+
+    FillWindowPixelBuffer(1, PIXEL_FILL(15));
+    DexScreen_AddTextPrinterParameterized(1, FONT_SMALL, gText_Cry, 8, 2, 4);
+    DexScreen_PrintControlInfo(gText_NextDataPreviousData);
+    PutWindowTilemap(1);
+    CopyWindowToVram(1, COPYWIN_GFX);
+}
+
+/*
+ * Renders the evolution page for the species currently shown
+ * (sPokedexScreenData->dexSpecies). The caller is responsible for only
+ * reaching this page for a caught species.
+ */
+static u8 DexScreen_DrawMonEvolutionPage(void)
+{
+    u16 species = sPokedexScreenData->dexSpecies;
+    int i;
+
+    sDexEvolutionPage = Alloc(sizeof(struct DexEvolutionPageResources));
+    if (sDexEvolutionPage == NULL)
+        return 0;
+
+    sDexEvolutionPage->scrollOffset = 0;
+    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN; i++)
+        sDexEvolutionPage->iconSpriteIds[i] = 0xFF;
+
+    // Always repaint BG3 with the plain content frame -- see
+    // DexScreen_DrawMonLearnsetPage for why.
+    DexScreen_DrawContentFrame(3);
+
+    DexScreen_BuildEvolutionRows(species, sDexEvolutionPage);
+    LoadMonIconPalettes();
+    DexScreen_ShowEvolutionPageContent();
+
+    return 1;
+}
+
+/*
+ * Handles Up/Down for the row list: moves the scroll offset by one row and
+ * redraws the visible rows when it changes.
+ */
+static void DexScreen_HandleEvolutionPageScrollInput(void)
+{
+    u16 maxOffset = sDexEvolutionPage->numRows - DEX_EVOLUTION_ROWS_SHOWN;
+
+    if (JOY_REPT(DPAD_UP) && sDexEvolutionPage->scrollOffset > 0)
+    {
+        sDexEvolutionPage->scrollOffset--;
+        DexScreen_DrawVisibleEvolutionRows();
+    }
+    else if (JOY_REPT(DPAD_DOWN) && sDexEvolutionPage->scrollOffset < maxOffset)
+    {
+        sDexEvolutionPage->scrollOffset++;
+        DexScreen_DrawVisibleEvolutionRows();
+    }
+}
+
+/*
+ * Per-frame input for the evolution page: Up/Down scrolls the row list (if
+ * it has more rows than fit on screen at once), A advances to the AREA
+ * page, B retreats to the TM/HM column.
+ */
+static u8 DexScreen_EvolutionPageHandleInput(void)
+{
+    if (sDexEvolutionPage->numRows > DEX_EVOLUTION_ROWS_SHOWN)
+        DexScreen_HandleEvolutionPageScrollInput();
+
+    if (JOY_NEW(A_BUTTON))
+        return DEX_EVOLUTION_INPUT_NEXT;
+    if (JOY_NEW(B_BUTTON))
+        return DEX_EVOLUTION_INPUT_BACK;
+    DexScreen_InputHandler_StartToCry();
+    return DEX_EVOLUTION_INPUT_NONE;
+}
+
+/*
+ * Leaves the evolution page: destroys any row icon sprites, the
+ * scroll-arrow pair (if the page had rows), both windows, frees the
+ * mon-icon palettes loaded for this page, and frees sDexEvolutionPage.
+ */
+static void DexScreen_DestroyEvolutionPageResources(void)
+{
+    int i;
+
+    if (sDexEvolutionPage->numRows > 0)
+        RemoveScrollIndicatorArrowPair(sDexEvolutionPage->scrollArrowsTaskId);
+    for (i = 0; i < DEX_EVOLUTION_ROWS_SHOWN; i++)
+        DexScreen_DestroyEvolutionRowIcon(i);
+
+    FreeMonIconPalettes();
+    DexScreen_RemoveWindow(&sDexEvolutionPage->listWindowId);
+    DexScreen_RemoveWindow(&sDexEvolutionPage->headerWindowId);
+
+    Free(sDexEvolutionPage);
+    sDexEvolutionPage = NULL;
+}
+
+// --- End evolution page --------------------------------------------------
 
 static void Task_DexScreen_CategorySubmenu(u8 taskId)
 {
@@ -2245,7 +2695,7 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
     case 24:
         DexScreen_DestroyAreaScreenResources();
         if (DexScreen_GetSetPokedexFlag(sPokedexScreenData->dexSpecies, FLAG_GET_CAUGHT, TRUE))
-            sPokedexScreenData->state = 27; // -> learnset page (caught only)
+            sPokedexScreenData->state = 31; // -> evolution page (caught only)
         else
             sPokedexScreenData->state = 25; // -> description page
         break;
@@ -2262,7 +2712,7 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
         sPokedexScreenData->state = 18;
         break;
     case 27:
-        DexScreen_DrawMonLearnsetPage();
+        DexScreen_DrawMonLearnsetPage(DEX_LEARNSET_COL_LEVELUP);
         sPokedexScreenData->state = 28;
         break;
     case 28:
@@ -2281,12 +2731,12 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
                 DexScreen_SwitchLearnsetPageColumn(DEX_LEARNSET_COL_TMHM);
                 sPokedexScreenData->state = 30;
             }
-            else // -> AREA page
+            else // -> evolution page
             {
                 DexScreen_DestroyLearnsetPageResources();
                 FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
                 CopyBgTilemapBufferToVram(1);
-                sPokedexScreenData->state = 21;
+                sPokedexScreenData->state = 31;
             }
             break;
         case DEX_LEARNSET_INPUT_BACK:
@@ -2308,6 +2758,38 @@ static void Task_DexScreen_CategorySubmenu(u8 taskId)
     case 30: // Push the just-switched learnset-page column's tilemap to VRAM
         CopyBgTilemapBufferToVram(1);
         sPokedexScreenData->state = 29;
+        break;
+    case 31:
+        DexScreen_DrawMonEvolutionPage();
+        sPokedexScreenData->state = 32;
+        break;
+    case 32:
+        CopyBgTilemapBufferToVram(3);
+        CopyBgTilemapBufferToVram(2);
+        CopyBgTilemapBufferToVram(1);
+        CopyBgTilemapBufferToVram(0);
+        sPokedexScreenData->state = 33;
+        break;
+    case 33: // Evolution-page input loop
+        switch (DexScreen_EvolutionPageHandleInput())
+        {
+        case DEX_EVOLUTION_INPUT_NEXT:
+            DexScreen_DestroyEvolutionPageResources();
+            FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+            CopyBgTilemapBufferToVram(1);
+            sPokedexScreenData->state = 21; // -> AREA page
+            break;
+        case DEX_EVOLUTION_INPUT_BACK:
+            DexScreen_DestroyEvolutionPageResources();
+            FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+            CopyBgTilemapBufferToVram(1);
+            sPokedexScreenData->state = 34; // -> learnset page, TM/HM column
+            break;
+        }
+        break;
+    case 34:
+        DexScreen_DrawMonLearnsetPage(DEX_LEARNSET_COL_TMHM);
+        sPokedexScreenData->state = 28; // falls into the existing tilemap-copy case
         break;
     }
 }
@@ -2460,7 +2942,7 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
     case 10:
         DexScreen_DestroyAreaScreenResources();
         if (DexScreen_GetSetPokedexFlag(sPokedexScreenData->dexSpecies, FLAG_GET_CAUGHT, TRUE))
-            sPokedexScreenData->state = 13; // -> learnset page (caught only)
+            sPokedexScreenData->state = 17; // -> evolution page (caught only)
         else
             sPokedexScreenData->state = 11; // -> description page
         break;
@@ -2479,7 +2961,7 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
         sPokedexScreenData->state = 1;
         break;
     case 13:
-        DexScreen_DrawMonLearnsetPage();
+        DexScreen_DrawMonLearnsetPage(DEX_LEARNSET_COL_LEVELUP);
         sPokedexScreenData->state = 14;
         break;
     case 14:
@@ -2498,12 +2980,12 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
                 DexScreen_SwitchLearnsetPageColumn(DEX_LEARNSET_COL_TMHM);
                 sPokedexScreenData->state = 16;
             }
-            else // -> AREA page
+            else // -> evolution page
             {
                 DexScreen_DestroyLearnsetPageResources();
                 FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
                 CopyBgTilemapBufferToVram(1);
-                sPokedexScreenData->state = 7;
+                sPokedexScreenData->state = 17;
             }
             break;
         case DEX_LEARNSET_INPUT_BACK:
@@ -2525,6 +3007,38 @@ static void Task_DexScreen_ShowMonPage(u8 taskId)
     case 16: // Push the just-switched learnset-page column's tilemap to VRAM
         CopyBgTilemapBufferToVram(1);
         sPokedexScreenData->state = 15;
+        break;
+    case 17:
+        DexScreen_DrawMonEvolutionPage();
+        sPokedexScreenData->state = 18;
+        break;
+    case 18:
+        CopyBgTilemapBufferToVram(3);
+        CopyBgTilemapBufferToVram(2);
+        CopyBgTilemapBufferToVram(1);
+        CopyBgTilemapBufferToVram(0);
+        sPokedexScreenData->state = 19;
+        break;
+    case 19: // Evolution-page input loop
+        switch (DexScreen_EvolutionPageHandleInput())
+        {
+        case DEX_EVOLUTION_INPUT_NEXT:
+            DexScreen_DestroyEvolutionPageResources();
+            FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+            CopyBgTilemapBufferToVram(1);
+            sPokedexScreenData->state = 7; // -> AREA page
+            break;
+        case DEX_EVOLUTION_INPUT_BACK:
+            DexScreen_DestroyEvolutionPageResources();
+            FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 2, 30, 16);
+            CopyBgTilemapBufferToVram(1);
+            sPokedexScreenData->state = 20; // -> learnset page, TM/HM column
+            break;
+        }
+        break;
+    case 20:
+        DexScreen_DrawMonLearnsetPage(DEX_LEARNSET_COL_TMHM);
+        sPokedexScreenData->state = 14; // falls into the existing tilemap-copy case
         break;
     }
 }
