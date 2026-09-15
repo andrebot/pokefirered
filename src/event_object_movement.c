@@ -2140,11 +2140,10 @@ static void LoadObjectEventPalette(u16 paletteTag)
 {
     u16 i = FindObjectEventPaletteIndexByTag(paletteTag);
 
-#ifdef BUGFIX
+    // Vanilla Rev 1 bug: compared the array index i against the tag sentinel
+    // OBJ_EVENT_PAL_TAG_NONE instead of looking up the tag at that index, so the
+    // condition was always true regardless of whether the tag was actually found.
     if (sObjectEventSpritePalettes[i].tag != OBJ_EVENT_PAL_TAG_NONE)
-#else
-    if (i != OBJ_EVENT_PAL_TAG_NONE) // always true
-#endif
     {
         TryLoadObjectPalette(&sObjectEventSpritePalettes[i]);
     }

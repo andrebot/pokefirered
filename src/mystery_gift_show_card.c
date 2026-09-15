@@ -504,11 +504,9 @@ static void DestroyCardSprites(void)
             if (sWonderCardData->stampSpriteIds[i][0] != SPRITE_NONE)
             {
                 DestroySprite(&gSprites[sWonderCardData->stampSpriteIds[i][0]]);
-            #ifdef BUGFIX
+                // Vanilla Rev 1 bug: guarded the [1] destroy call by re-checking [0] (already known
+                // non-SPRITE_NONE from the outer if), instead of validating [1] itself before use.
                 if (sWonderCardData->stampSpriteIds[i][1] != SPRITE_NONE)
-            #else
-                if (sWonderCardData->stampSpriteIds[i][0] != SPRITE_NONE)
-            #endif
                     DestroyMonIcon(&gSprites[sWonderCardData->stampSpriteIds[i][1]]);
             }
         }

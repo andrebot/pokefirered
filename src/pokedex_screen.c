@@ -3644,11 +3644,9 @@ static bool8 DexScreen_FlipCategoryPageInDirection(u8 direction)
         }
         else
         {
-#ifdef BUGFIX
+            // Vanilla Rev 1 bug: passed data[0] (the case-state counter) here instead of the
+            // final page-turn position, 0.
             DexScreen_TurnCategoryPage_BgEffect(0);
-#else
-            DexScreen_TurnCategoryPage_BgEffect(sPokedexScreenData->data[0]);
-#endif
             BeginNormalPaletteFade(0x00007FFF, 0, 16, 16, color);
             sPokedexScreenData->data[0]++;
         }

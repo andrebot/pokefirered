@@ -443,12 +443,9 @@ u16 MapPreview_CreateMapNameWindow(u8 mapsec)
 {
     u16 windowId;
     u32 xctr;
-    #ifdef BUGFIX
-    // Fixes access violations indicated below.
+    // Vanilla Rev 1 bug: declared as color[0] but 3 elements are written below —
+    // an out-of-bounds write on every map preview screen.
     u8 color[3];
-    #else
-    u8 color[0];
-    #endif
 
     windowId = AddWindow(&sMapNameWindow);
     FillWindowPixelBuffer(windowId, PIXEL_FILL(1));

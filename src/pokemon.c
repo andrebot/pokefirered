@@ -2155,12 +2155,11 @@ void CalculateMonStats(struct Pokemon *mon)
         if (currentHP == 0 && oldMaxHP == 0)
             currentHP = newMaxHP;
         else if (currentHP != 0) {
-            // BUG: currentHP is unintentionally able to become <= 0 after the instruction below.
+            // Vanilla Rev 1 bug: currentHP could unintentionally become <= 0 after this instruction
+            // (e.g. when max HP decreases), incorrectly registering a living Pokemon as fainted.
             currentHP += newMaxHP - oldMaxHP;
-            #ifdef BUGFIX
             if (currentHP <= 0)
                 currentHP = 1;
-            #endif
         }
         else
             return;
@@ -3642,11 +3641,9 @@ void SetBoxMonData(struct BoxPokemon *boxMon, s32 field, const void *dataArg)
         break;
     case MON_DATA_IVS:
     {
-#ifdef BUGFIX
+        // Vanilla Rev 1 bug: only read 1 byte here, so defenseIV/speedIV/spAttackIV/spDefenseIV
+        // were always 0 when IVs were set through this path. Fixed to read the full 4-byte IV bitfield.
         u32 ivs = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
-#else
-        u32 ivs = *data; // Bug: Only the HP IV and the lower 3 bits of the Attack IV are read. The rest become 0.
-#endif
         substruct3->hpIV = ivs & MAX_IV_MASK;
         substruct3->attackIV = (ivs >> 5) & MAX_IV_MASK;
         substruct3->defenseIV = (ivs >> 10) & MAX_IV_MASK;
@@ -5391,17 +5388,12 @@ u8 GetTrainerEncounterMusicId(u16 trainerId)
 
 static u16 ModifyStatByNature(u8 nature, u16 stat, u8 statIndex)
 {
-// Because this is a u16 it will be unable to store the
-// result of the multiplication for any stat > 595 for a
-// positive nature and > 728 for a negative nature.
-// Neither occur in the base game, but this can happen if
-// any Nature-affected base stat is increased to a value
-// above 248. The closest by default is Shuckle at 230.
-#ifdef BUGFIX
+    // Vanilla Rev 1 bug: retVal was a u16, unable to store the result of the multiplication
+    // below for any stat > 595 (positive nature) or > 728 (negative nature). Doesn't occur with
+    // vanilla base stats but can with any nature-affected base stat raised above 248 (relevant
+    // for rebalanced stats in this romhack). Widened to u32; the function's own return type
+    // stays u16, which is still plenty for any realistic final stat value.
     u32 retVal;
-#else
-    u16 retVal;
-#endif
 
     // Don't modify HP, Accuracy, or Evasion by nature
     if (statIndex <= STAT_HP || statIndex > NUM_NATURE_STATS)

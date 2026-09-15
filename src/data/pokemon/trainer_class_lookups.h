@@ -147,13 +147,10 @@ const u8 gFacilityClassToPicIndex[] =
     [FACILITY_CLASS_RUIN_MANIAC]            = TRAINER_PIC_RUIN_MANIAC,
     [FACILITY_CLASS_LADY]                   = TRAINER_PIC_LADY,
     [FACILITY_CLASS_PAINTER]                = TRAINER_PIC_PAINTER,
-#ifdef BUGFIX
+    // Vanilla Rev 1 bug: these two facility classes pointed at Lorelei/Bruno's trainer pics
+    // instead of Agatha/Lance's own.
     [FACILITY_CLASS_ELITE_FOUR_AGATHA]      = TRAINER_PIC_ELITE_FOUR_AGATHA,
     [FACILITY_CLASS_ELITE_FOUR_LANCE]       = TRAINER_PIC_ELITE_FOUR_LANCE,
-#else
-    [FACILITY_CLASS_ELITE_FOUR_AGATHA]      = TRAINER_PIC_ELITE_FOUR_LORELEI,
-    [FACILITY_CLASS_ELITE_FOUR_LANCE]       = TRAINER_PIC_ELITE_FOUR_BRUNO,
-#endif  
     [FACILITY_CLASS_CHAMPION_RIVAL_2]       = TRAINER_PIC_CHAMPION_RIVAL,
 };
 

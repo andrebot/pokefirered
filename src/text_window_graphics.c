@@ -54,11 +54,9 @@ const struct TextWindowGraphics gUserFrames[] = {
 
 const struct TextWindowGraphics *GetUserWindowGraphics(u8 idx)
 {
-#ifdef BUGFIX
+    // Vanilla Rev 1 bug: bounds-checked against 20 (RSE's frame count) instead of this game's
+    // actual, smaller gUserFrames array size — indices 10-19 read out of bounds.
     if (idx >= ARRAY_COUNT(gUserFrames))
-#else
-    if (idx >= 20) // Using the RSE number of elements
-#endif
         return &gUserFrames[0];
     else
         return &gUserFrames[idx];

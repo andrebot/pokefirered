@@ -446,12 +446,12 @@ static bool32 UpdateCommunicationCounts(u32 * groupCounts, u32 * prevGroupCounts
     memcpy(groupCounts,     groupCountBuffer, sizeof(groupCountBuffer));
     memcpy(prevGroupCounts, groupCountBuffer, sizeof(groupCountBuffer));
     
+    // Vanilla Rev 1 bug: the total omitted groupCounts[GROUPTYPE_TOTAL]'s own pre-existing value
+    // (copied from groupCountBuffer just above, covering activities not in the three groups
+    // below), undercounting the total.
     groupCounts[GROUPTYPE_TOTAL] = groupCounts[GROUPTYPE_TRADE]
                                  + groupCounts[GROUPTYPE_BATTLE]
                                  + groupCounts[GROUPTYPE_UNION]
-                            #ifdef BUGFIX
-                                 + groupCounts[GROUPTYPE_TOTAL] // Missing count for activities not in above groups
-                            #endif
-                                 ;
+                                 + groupCounts[GROUPTYPE_TOTAL];
     return TRUE;
 }
